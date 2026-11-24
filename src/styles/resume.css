@@ -85,6 +85,8 @@
 .block-link { font-size: 7pt; white-space: nowrap; margin-left: 1.5mm; font-weight: 400; }
 .continuation-header { display: flex; justify-content: space-between; gap: 5mm; border-bottom: .25mm solid #e9e3ed; padding-bottom: 4mm; margin-bottom: 6mm; font-size: 7.5pt; color: #a096a8; }
 .resume-page-footer { position: absolute; left: 13mm; right: 13mm; bottom: 7mm; border-top: .25mm solid #e9e3ed; padding-top: 2mm; display: flex; justify-content: space-between; color: #a096a8; font-size: 7pt; min-height: 5mm; }
+.block-description { padding-bottom: 0; }
+.block-description p { min-height: 1lh; white-space: pre-wrap; }
 @page { size: A4; margin: 0; }
 @media print {
   html, body, #app, .workspace, .workspace-body, .document-workspace, .document-stage { margin: 0 !important; padding: 0 !important; display: block !important; background: #fff !important; width: auto !important; min-height: 0 !important; overflow: visible !important; }

@@ -5,10 +5,59 @@ import { useResumeStore } from '../stores/resume'
 import ResumePage from './resume/ResumePage.vue'
 import ResumeHeader from './resume/ResumeHeader.vue'
 import ResumeBlock from './resume/ResumeBlock.vue'
+import ResumeEditor from './ResumeEditor.vue'
+import ResumeHistory from './ResumeHistory.vue'
+import '../styles/editor.css'
 import { paginate } from '../utils/paginate'
-import type { DocumentBlock, ResumePage as Page } from '../types/resume'
+import type { DocumentBlock, Resume, ResumePage as Page } from '../types/resume'
 
-const { resume, design, blocks } = storeToRefs(useResumeStore())
+const store = useResumeStore()
+const { resume, design, blocks, history, historyError, historyReady, activeVersion, viewingLatest } = storeToRefs(store)
+
+const editorOpen = ref(false)
+const editorError = ref('')
+const savingVersion = ref(false)
+const restoringVersion = ref(false)
+const versionActionError = ref('')
+
+function openEditor() {
+  editorError.value = ''
+  editorOpen.value = true
+}
+
+async function saveVersion(draft: Resume, title: string) {
+  if (savingVersion.value) return
+  savingVersion.value = true
+  editorError.value = ''
+  try {
+    await store.addVersion(draft, title)
+    editorOpen.value = false
+    versionActionError.value = ''
+  } catch (cause) {
+    editorError.value = cause instanceof Error ? cause.message : 'Не удалось сохранить версию.'
+  } finally {
+    savingVersion.value = false
+  }
+}
+
+function selectVersion(id: string) {
+  versionActionError.value = ''
+  store.selectVersion(id)
+}
+
+async function restoreVersion() {
+  if (restoringVersion.value) return
+  restoringVersion.value = true
+  try {
+    await store.restoreVersion()
+    versionActionError.value = ''
+  } catch (cause) {
+    versionActionError.value = cause instanceof Error ? cause.message : 'Не удалось восстановить версию.'
+  } finally {
+    restoringVersion.value = false
+  }
+}
+
 const pages = ref<Page[]>([])
 const error = ref('')
 const busy = ref(true)
@@ -76,6 +125,7 @@ async function layout() {
 function printResume() { window.print() }
 
 onMounted(() => {
+  void store.initializeHistory()
   resizeObserver = new ResizeObserver(entries => { stageWidth.value = entries[0]!.contentRect.width })
   if (stage.value) resizeObserver.observe(stage.value)
   void layout()
@@ -88,13 +138,18 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
   <div class="workspace">
     <header class="app-header screen-only">
       <a class="brand" href="#" aria-label="Резюме — на главную"><span class="brand-icon">р.</span>Резюме<span class="brand-divider">/</span><span class="brand-caption">Моё рабочее пространство</span></a>
-      <span class="version-badge"><span></span>Базовая версия</span>
     </header>
 
     <div class="workspace-body">
+      <ResumeHistory
+        :versions="history"
+        :active-id="activeVersion.id"
+        :error="historyError"
+        @select="selectVersion"
+      />
       <main class="document-workspace">
         <div class="viewer-toolbar screen-only" aria-label="Панель просмотра">
-          <div class="document-meta"><span class="file-symbol" aria-hidden="true">▤</span><div><strong>Беляева Мария</strong><span aria-live="polite">{{ busy ? 'Формируем страницы…' : `${pages.length} стр. · A4` }}</span></div></div>
+          <div class="document-meta"><span class="file-symbol" aria-hidden="true">▤</span><div><strong>{{ resume.profile.name }}</strong><span aria-live="polite">{{ busy ? 'Формируем страницы…' : `${pages.length} стр. · A4` }}</span></div></div>
           <div class="viewer-actions">
             <label class="design-control">
               <span>Дизайн</span>
@@ -104,10 +159,15 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
               </select>
             </label>
             <label class="zoom-control"><span class="sr-only">Масштаб документа</span><select v-model="zoom"><option value="fit">По ширине</option><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option></select></label>
+            <button v-if="!viewingLatest" class="resume-control" type="button" :disabled="!historyReady || restoringVersion" @click="restoreVersion">
+              Восстановить
+            </button>
+            <button class="resume-control" type="button" :disabled="!historyReady || restoringVersion" @click="openEditor">Редактировать</button>
             <button class="print-button" type="button" :disabled="busy || !!error" @click="printResume"><span aria-hidden="true">↥</span>Печать / PDF</button>
           </div>
         </div>
 
+        <p v-if="versionActionError" class="resume-editor-error screen-only" role="alert">{{ versionActionError }}</p>
         <div ref="stage" class="document-stage" :aria-busy="busy">
           <p v-if="error" role="alert" class="layout-error screen-only">{{ error }}</p>
           <div v-for="(page, index) in pages" :id="`sheet-${index}`" :key="index" class="sheet-wrapper" :style="pageStyle">
@@ -119,6 +179,16 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
         </div>
       </main>
     </div>
+
+    <ResumeEditor
+      v-if="editorOpen"
+      :resume="resume"
+      :version-label="activeVersion.title"
+      :error="editorError"
+      :saving="savingVersion"
+      @close="editorOpen = false"
+      @save="saveVersion"
+    />
 
     <!-- Real-size copies are independent of screen zoom and viewport width. -->
     <div class="measurement-root" aria-hidden="true" inert>

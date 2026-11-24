@@ -1,19 +1,20 @@
 import { fileURLToPath, URL } from 'node:url'
-
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import vueDevTools from 'vite-plugin-vue-devtools'
+import { resumeHistoryPlugin } from './server/resume-history'
 
-// https://vite.dev/config/
 export default defineConfig({
-  plugins: [
-    vue(),
-    vueDevTools(),
-  ],
+  plugins: [vue(), vueDevTools(), resumeHistoryPlugin()],
   server: {
     host: '127.0.0.1',
-    port: 5173
+    port: 5173,
+    watch: { ignored: ['**/resume-data/**', '**/src/data/versions/**'] },
+    fs: {
+      deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/resume-data/**', '**/src/data/versions/**'],
+    },
   },
+  preview: { host: '127.0.0.1' },
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

@@ -42,19 +42,21 @@ export function paginate(
 
     // Even one unusually long paragraph can exceed a whole sheet. Split by words,
     // measuring each candidate, so no text is clipped or silently discarded.
-    const words = block.text.split(/\s+/)
+    const preserveWhitespace = block.kind === 'description'
+    const words = preserveWhitespace ? (block.text.match(/\S+\s*|\s+/g) ?? []) : block.text.split(/\s+/)
+    const separator = preserveWhitespace ? '' : ' '
     let low = 1
     let high = words.length - 1
     let fit = 0
     while (low <= high) {
       const mid = Math.floor((low + high) / 2)
-      if (measure({ ...block, text: words.slice(0, mid).join(' '), href: undefined }, first) <= available) {
+      if (measure({ ...block, text: words.slice(0, mid).join(separator), href: undefined }, first) <= available) {
         fit = mid; low = mid + 1
       } else high = mid - 1
     }
     if (!fit) throw new Error('Блок не помещается на лист A4. Проверьте размер шрифта и длину слова.')
-    const head = { ...block, id: `${block.id}-part-${splitId++}`, text: words.slice(0, fit).join(' '), href: undefined, keepWithNext: false }
-    const tail = { ...block, text: words.slice(fit).join(' '), label: undefined }
+    const head = { ...block, id: `${block.id}-part-${splitId++}`, text: words.slice(0, fit).join(separator), href: undefined, keepWithNext: false }
+    const tail = { ...block, text: words.slice(fit).join(separator), label: undefined }
     page.blocks.push(head)
     queue[index] = tail
     newPage()

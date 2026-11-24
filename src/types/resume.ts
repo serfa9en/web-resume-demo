@@ -23,6 +23,9 @@ export interface ResumeEntry {
   id: string
   title?: string
   subtitle?: string
+  position?: string
+  period?: string
+  description?: string
   fields?: Field[]
   paragraphs?: string[]
   items?: ResumeItem[]
@@ -51,7 +54,7 @@ export interface Resume {
 /** Small semantic blocks allow pagination between individual duties and paragraphs. */
 export interface DocumentBlock {
   id: string
-  kind: 'section' | 'entry' | 'subtitle' | 'field' | 'paragraph' | 'bullet'
+  kind: 'section' | 'entry' | 'subtitle' | 'field' | 'paragraph' | 'description' | 'bullet'
   text: string
   label?: string
   href?: string

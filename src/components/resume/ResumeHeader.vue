@@ -4,7 +4,7 @@ import type { Resume, ResumeDesign } from '../../types/resume'
 
 const props = defineProps<{ profile: Resume['profile']; design?: ResumeDesign }>()
 const photoFailed = ref(false)
-const photoUrl = (path: string) => `${import.meta.env.BASE_URL}${path}`
+const photoUrl = (path: string) => /^(data:image\/(png|jpeg|webp);base64,|https?:\/\/)/i.test(path) ? path : `${import.meta.env.BASE_URL}${path}`
 watch(() => props.profile.photo, () => { photoFailed.value = false })
 </script>
 
