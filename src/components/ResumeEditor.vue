@@ -2,22 +2,38 @@
 import { computed, onMounted, ref } from 'vue'
 import type { Resume } from '../types/resume'
 import RichTextField from './RichTextField.vue'
+import { blankJob } from '../utils/resumeSources'
 import { joinText, plainText } from '../utils/richText'
 
-const props = defineProps<{ resume: Resume; versionLabel: string; error: string; saving: boolean }>()
+const props = defineProps<{ resume: Resume; versionLabel: string; error: string; saving: boolean; creatingSource?: boolean }>()
 const emit = defineEmits<{ save: [resume: Resume, label: string]; close: [] }>()
 
 const draft = ref<Resume>(JSON.parse(JSON.stringify(props.resume)))
 const personalFields = computed(() =>
   draft.value.sections.find(section => section.id === 'personal')?.entries.flatMap(entry => entry.fields ?? []) ?? [],
 )
-const jobs = ref((draft.value.sections.find(section => section.id === 'experience')?.entries ?? [])
+const experience = computed(() => draft.value.sections.find(section => section.id === 'experience'))
+const education = computed(() => draft.value.sections.find(section => section.id === 'education')?.entries ?? [])
+const jobs = ref((experience.value?.entries ?? [])
   .filter(entry => entry.id === 'it-service' || entry.subtitle || entry.position !== undefined || entry.period !== undefined)
   .map(entry => {
     const [position = '', ...period] = (entry.subtitle ?? '').split(' · ')
     return { entry, position: entry.position ?? position, period: entry.period ?? period.join(' · ') }
   }))
 
+
+function addJob() {
+  const entry = blankJob('job-' + crypto.randomUUID())
+  experience.value?.entries.push(entry)
+  jobs.value.push({ entry, position: '', period: '' })
+}
+
+function removeJob(index: number) {
+  const job = jobs.value[index]
+  if (!job || !experience.value) return
+  experience.value.entries = experience.value.entries.filter(entry => entry.id !== job.entry.id)
+  jobs.value.splice(index, 1)
+}
 
 const sections = { hard: 'section-3', soft: 'section-4', courses: 'section-5', about: 'section-6' }
 const courseFields = ['Проводившая организация', 'Год окончания', 'Специальность', 'Формат']
@@ -57,6 +73,10 @@ function addCourse() {
 
 const formError = ref('')
 function submit() {
+  if (props.creatingSource && !label.value.trim()) {
+    formError.value = 'Укажи название резюме для списка.'
+    return
+  }
   if (!plainText(draft.value.profile.role).trim()) {
     formError.value = 'Укажи название вакансии.'
     return
@@ -89,7 +109,7 @@ function snapshot(): Resume {
 }
 
 const initial = JSON.stringify(snapshot())
-const dirty = computed(() => JSON.stringify(snapshot()) !== initial)
+const dirty = computed(() => JSON.stringify(snapshot()) !== initial || !!(props.creatingSource && label.value.trim()))
 
 function close() {
   if (props.saving) return
@@ -110,15 +130,18 @@ onMounted(() => dialog.value?.showModal())
     <form class="resume-editor-form" @invalid.capture="revealInvalidField" @submit.prevent="submit">
       <header class="resume-editor-header">
         <div>
-          <h2 id="resume-editor-title">Редактирование резюме</h2>
-          <p>{{ versionLabel }}</p>
+          <h2 id="resume-editor-title">{{ creatingSource ? 'Новое исходное резюме' : 'Редактирование резюме' }}</h2>
+          <p v-if="!creatingSource">{{ versionLabel }}</p>
         </div>
         <button type="button" class="resume-control" aria-label="Закрыть редактор" :disabled="saving" @click="close">×</button>
       </header>
 
       <fieldset class="resume-editor-fields" :disabled="saving">
+        <label v-if="creatingSource">Название резюме в списке <input v-model.trim="label" maxlength="100" required placeholder="Например, Frontend-разработчик"></label>
         <details open>
           <summary>Вакансия и зарплата</summary>
+          <label>Имя и фамилия <input v-model="draft.profile.name"></label>
+          <label>Фото (имя файла из public или ссылка) <input v-model.trim="draft.profile.photo"></label>
           <RichTextField v-model="draft.profile.role" label="Название вакансии" :disabled="saving" />
           <RichTextField v-model="draft.profile.salary" label="Зарплата" :disabled="saving" />
         </details>
@@ -162,17 +185,28 @@ onMounted(() => dialog.value?.showModal())
             v-model="field.value" :label="plainText(field.label)" :disabled="saving" />
         </details>
 
-        <details v-if="jobs.length">
+        <details v-if="experience">
           <summary>Опыт работы</summary>
-          <fieldset v-for="job in jobs" :key="job.entry.id">
+          <fieldset v-for="(job, index) in jobs" :key="job.entry.id">
             <legend>{{ plainText(job.entry.title ?? '') || 'Место работы' }}</legend>
             <RichTextField v-model="job.entry.title" label="Название компании" :disabled="saving" />
             <RichTextField v-model="job.position" label="Должность" :disabled="saving" />
             <RichTextField v-model="job.period" label="Период работы" :disabled="saving" />
             <RichTextField v-model="job.entry.description" label="Описание работы" multiline :disabled="saving" />
+            <button type="button" @click="removeJob(index)">Удалить место работы</button>
           </fieldset>
+          <button type="button" @click="addJob">Добавить место работы</button>
         </details>
 
+        <details v-if="education.length">
+          <summary>Образование</summary>
+          <fieldset v-for="entry in education" :key="entry.id">
+            <legend>Учебное заведение</legend>
+            <RichTextField v-model="entry.title" label="Название" :disabled="saving" />
+            <RichTextField v-for="(field, index) in entry.fields" :key="index"
+              v-model="field.value" :label="field.label" :disabled="saving" />
+          </fieldset>
+        </details>
         <details>
           <summary>Hard Skills</summary>
           <RichTextField v-model="hardSkills" label="Hard Skills" multiline :disabled="saving" />
@@ -196,7 +230,7 @@ onMounted(() => dialog.value?.showModal())
           <summary>О себе</summary>
           <RichTextField v-model="about" label="О себе" multiline :disabled="saving" />
         </details>
-        <label>Название новой версии <input v-model="label" placeholder="Например, для вакансии Vue-разработчика"></label>
+        <label v-if="!creatingSource">Название новой версии <input v-model="label" placeholder="Например, для вакансии Vue-разработчика"></label>
       </fieldset>
 
       <footer class="resume-editor-actions">
@@ -208,7 +242,7 @@ onMounted(() => dialog.value?.showModal())
         <template v-else>
           <p v-if="formError || error" role="alert" class="resume-editor-error">{{ formError || error }}</p>
           <button type="button" class="resume-control" :disabled="saving" @click="close">Отмена</button>
-          <button type="submit" class="print-button" :disabled="saving || !dirty">{{ saving ? 'Сохраняем…' : 'Сохранить версию' }}</button>
+          <button type="submit" class="print-button" :disabled="saving || !dirty">{{ saving ? 'Сохраняем…' : creatingSource ? 'Создать резюме' : 'Сохранить версию' }}</button>
         </template>
       </footer>
     </form>

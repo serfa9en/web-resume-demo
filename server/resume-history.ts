@@ -4,13 +4,15 @@ import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
-import type { Resume } from '../src/types/resume'
+import { blankResume, defaultSources, MAIN_RESUME_ID } from '../src/utils/resumeSources'
+import type { Resume, ResumeSource } from '../src/types/resume'
 import type { ResumeVersion } from '../src/stores/resume'
 
-const directory = fileURLToPath(new URL('../src/data/versions/', import.meta.url))
-const deletedFile = join(directory, '.deleted-ids.json')
+const mainDirectory = fileURLToPath(new URL('../src/data/versions/', import.meta.url))
+const sourcesDirectory = fileURLToPath(new URL('../src/data/resumes/', import.meta.url))
 const legacyFile = fileURLToPath(new URL('../resume-data/history.json', import.meta.url))
 const seedFile = fileURLToPath(new URL('../src/data/resume.json', import.meta.url))
+const sourcesRoute = '/api/resumes'
 const route = '/api/resume-versions'
 
 class RequestError extends Error {
@@ -82,7 +84,70 @@ function makeFilename(savedAt: string): string {
   return `version_${parts.day}-${parts.month}-${parts.year}_${parts.hour}-${parts.minute}.json`
 }
 
-async function saveVersion(version: ResumeVersion) {
+interface SavedSource extends ResumeSource {
+  resume: Resume
+}
+
+const customId = /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i
+
+function versionsDirectory(id: string): string {
+  return id === MAIN_RESUME_ID ? mainDirectory : join(sourcesDirectory, id, 'versions')
+}
+
+async function listSources(): Promise<ResumeSource[]> {
+  await mkdir(sourcesDirectory, { recursive: true })
+  const result = [...defaultSources]
+  const folders = await readdir(sourcesDirectory, { withFileTypes: true })
+  for (const folder of folders) {
+    if (!folder.isDirectory() || !customId.test(folder.name)) continue
+    try {
+      const { id, title } = await readCustomSource(folder.name)
+      result.push({ id, title })
+    } catch (cause) {
+      if (!(cause instanceof RequestError && cause.status === 404)) throw cause
+    }
+  }
+  return result
+}
+
+async function readCustomSource(id: string): Promise<SavedSource> {
+  if (!customId.test(id)) throw new RequestError(404, 'Исходное резюме не найдено.')
+  try {
+    const data: SavedSource = JSON.parse(await readFile(join(sourcesDirectory, id, 'resume.json'), 'utf8'))
+    if (data.id !== id || typeof data.title !== 'string' || !validResume(data.resume)) {
+      throw new Error('Invalid resume source: ' + id)
+    }
+    return data
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') {
+      throw new RequestError(404, 'Исходное резюме не найдено.')
+    }
+    throw cause
+  }
+}
+
+async function readSource(id: string): Promise<SavedSource> {
+  const builtin = defaultSources.find(item => item.id === id)
+  if (!builtin) return readCustomSource(id)
+  if (id !== MAIN_RESUME_ID) return { ...builtin, resume: blankResume() }
+  const resume: unknown = JSON.parse(await readFile(seedFile, 'utf8'))
+  if (!validResume(resume)) throw new Error('Invalid initial resume')
+  return { ...builtin, resume }
+}
+
+async function createSource(body: Record<string, unknown>) {
+  if (typeof body.title !== 'string' || !body.title.trim() || body.title.trim().length > 100 ||
+    !validResume(body.resume)) {
+    throw new RequestError(400, 'Укажи название резюме до 100 символов и проверь данные.')
+  }
+  const id = randomUUID()
+  const folder = join(sourcesDirectory, id)
+  await mkdir(folder, { recursive: true })
+  await replaceJson(join(folder, 'resume.json'), { id, title: body.title.trim(), resume: body.resume })
+  return { id, title: body.title.trim(), history: [{ id: 'original', title: 'Исходное резюме', createdAt: null, resume: body.resume }] }
+}
+
+async function saveVersion(directory: string, version: ResumeVersion) {
   if (!version.createdAt) throw new Error('A saved version must have a timestamp')
   const filename = makeFilename(version.createdAt)
   await mkdir(directory, { recursive: true })
@@ -106,7 +171,7 @@ async function saveVersion(version: ResumeVersion) {
   }
 }
 
-async function readVersionFiles() {
+async function readVersionFiles(directory: string) {
   const entries = await readdir(directory, { withFileTypes: true })
   const versions: { version: ResumeVersion; slot: number; path: string }[] = []
 
@@ -131,11 +196,11 @@ async function readVersionFiles() {
   )
 }
 
-async function importVersions(versions: ResumeVersion[], current: ResumeVersion[]) {
-  const ids = new Set([...await readDeletedIds(), ...current.map(version => version.id)])
+async function importVersions(directory: string, versions: ResumeVersion[], current: ResumeVersion[]) {
+  const ids = new Set([...await readDeletedIds(directory), ...current.map(version => version.id)])
   for (const version of versions) {
     if (!version.createdAt || ids.has(version.id)) continue
-    await saveVersion(version)
+    await saveVersion(directory, version)
     ids.add(version.id)
   }
 }
@@ -153,12 +218,11 @@ async function readLegacyHistory(): Promise<ResumeVersion[]> {
   return history
 }
 
-async function loadHistory(): Promise<ResumeVersion[]> {
+async function loadHistory(source: SavedSource): Promise<ResumeVersion[]> {
+  const directory = versionsDirectory(source.id)
   await mkdir(directory, { recursive: true })
-  const versions = (await readVersionFiles()).map(({ version }) => version)
-  const resume: unknown = JSON.parse(await readFile(seedFile, 'utf8'))
-  if (!validResume(resume)) throw new Error('Invalid initial resume')
-  return [...versions, { id: 'original', title: 'Исходное резюме', createdAt: null, resume }]
+  const versions = (await readVersionFiles(directory)).map(({ version }) => version)
+  return [...versions, { id: 'original', title: 'Исходное резюме', createdAt: null, resume: source.resume }]
 }
 
 async function readBody(request: IncomingMessage): Promise<Record<string, unknown>> {
@@ -181,10 +245,10 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
   throw new RequestError(400, 'Некорректный JSON.')
 }
 
-async function readDeletedIds(): Promise<string[]> {
+async function readDeletedIds(directory: string): Promise<string[]> {
   let content: string
   try {
-    content = await readFile(deletedFile, 'utf8')
+    content = await readFile(join(directory, '.deleted-ids.json'), 'utf8')
   } catch (cause) {
     if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return []
     throw cause
@@ -204,38 +268,43 @@ async function replaceJson(path: string, value: unknown) {
   }
 }
 
-async function deleteVersion(id: string) {
+async function deleteVersion(source: SavedSource, id: string) {
+  const directory = versionsDirectory(source.id)
   if (id === 'original') throw new RequestError(400, 'Исходное резюме удалить нельзя.')
 
-  const matching = (await readVersionFiles()).filter(file => file.version.id === id)
-  if (!matching.length) return loadHistory()
+  const matching = (await readVersionFiles(directory)).filter(file => file.version.id === id)
+  if (!matching.length) return loadHistory(source)
 
   // Record only the ID so old browser copies cannot reimport the deleted version.
-  const deleted = await readDeletedIds()
-  if (!deleted.includes(id)) await replaceJson(deletedFile, [...deleted, id])
+  const deleted = await readDeletedIds(directory)
+  if (!deleted.includes(id)) await replaceJson(join(directory, '.deleted-ids.json'), [...deleted, id])
 
-  const legacy = await readLegacyHistory()
-  const remaining = legacy.filter(version => version.id !== id)
-  if (remaining.length !== legacy.length) await replaceJson(legacyFile, remaining)
+  if (source.id === MAIN_RESUME_ID) {
+    const legacy = await readLegacyHistory()
+    const remaining = legacy.filter(version => version.id !== id)
+    if (remaining.length !== legacy.length) await replaceJson(legacyFile, remaining)
+  }
 
   for (const file of matching) await rm(file.path, { force: true })
-  return loadHistory()
+  return loadHistory(source)
 }
 
-async function applyChange(body: Record<string, unknown>, history: ResumeVersion[]) {
+async function applyChange(source: SavedSource, body: Record<string, unknown>, history: ResumeVersion[]) {
+  const directory = versionsDirectory(source.id)
   if (body.action === 'delete') {
     if (typeof body.id !== 'string' || !body.id) {
       throw new RequestError(400, 'Не указана версия для удаления.')
     }
-    return deleteVersion(body.id)
+    return deleteVersion(source, body.id)
   }
 
   if (body.action === 'migrate') {
     if (!Array.isArray(body.versions) || !body.versions.every(validVersion)) {
       throw new RequestError(400, 'Старые версии имеют неверный формат.')
     }
-    await importVersions(body.versions, history)
-    return loadHistory()
+    if (source.id !== MAIN_RESUME_ID) throw new RequestError(400, 'Старая история относится к основному резюме.')
+    await importVersions(directory, body.versions, history)
+    return loadHistory(source)
   }
 
   if (body.action !== 'save' || typeof body.title !== 'string' || !validResume(body.resume)) {
@@ -250,8 +319,8 @@ async function applyChange(body: Record<string, unknown>, history: ResumeVersion
     title: body.title.trim() || `Версия ${history.length + 1}`,
     resume: body.resume,
   }
-  await saveVersion(version)
-  return loadHistory()
+  await saveVersion(directory, version)
+  return loadHistory(source)
 }
 
 export function resumeHistoryPlugin(): Plugin {
@@ -259,7 +328,8 @@ export function resumeHistoryPlugin(): Plugin {
   let legacyImported = false
 
   function middleware(request: IncomingMessage, response: ServerResponse, next: () => void) {
-    if (request.url?.split('?')[0] !== route) return next()
+    const url = new URL(request.url ?? '/', 'http://localhost')
+    if (url.pathname !== route && url.pathname !== sourcesRoute) return next()
     response.setHeader('Content-Type', 'application/json; charset=utf-8')
     response.setHeader('Cache-Control', 'no-store')
 
@@ -275,16 +345,19 @@ export function resumeHistoryPlugin(): Plugin {
         }
         const body = request.method === 'POST' ? await readBody(request) : undefined
         const operation = queue.then(async () => {
-          let history = await loadHistory()
-          if (!legacyImported) {
+          if (url.pathname === sourcesRoute) return body ? createSource(body) : listSources()
+
+          const source = await readSource(url.searchParams.get('resumeId') ?? MAIN_RESUME_ID)
+          let history = await loadHistory(source)
+          if (source.id === MAIN_RESUME_ID && !legacyImported) {
             const legacy = await readLegacyHistory()
             if (legacy.length) {
-              await importVersions(legacy, history)
-              history = await loadHistory()
+              await importVersions(mainDirectory, legacy, history)
+              history = await loadHistory(source)
             }
             legacyImported = true
           }
-          return body ? applyChange(body, history) : history
+          return body ? applyChange(source, body, history) : history
         })
         queue = operation.catch(() => undefined)
         response.end(JSON.stringify(await operation))

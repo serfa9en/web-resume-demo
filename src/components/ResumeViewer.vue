@@ -8,21 +8,27 @@ import ResumeBlock from './resume/ResumeBlock.vue'
 import ResumeEditor from './ResumeEditor.vue'
 import ResumeHistory from './ResumeHistory.vue'
 import '../styles/editor.css'
+import { blankResume } from '../utils/resumeSources'
 import { plainText, textHtml } from '../utils/richText'
 import { paginate } from '../utils/paginate'
 import type { DocumentBlock, Resume, ResumePage as Page } from '../types/resume'
 
 const store = useResumeStore()
-const { resume, design, blocks, history, historyError, historyReady, activeVersion, viewingLatest } = storeToRefs(store)
+const { sources, resumeId, resume, design, blocks, history, historyError, historyReady, activeVersion, viewingLatest } = storeToRefs(store)
 
 const editorOpen = ref(false)
+const creatingSource = ref(false)
+const switchingResume = ref(false)
+const editorResume = computed(() => creatingSource.value ? blankResume() : resume.value)
 const editorError = ref('')
 const savingVersion = ref(false)
 const restoringVersion = ref(false)
 const deletingVersion = ref(false)
 const versionActionError = ref('')
+const resumeActionsBusy = computed(() => switchingResume.value || restoringVersion.value || deletingVersion.value || savingVersion.value)
 
-function openEditor() {
+function openEditor(create = false) {
+  creatingSource.value = create
   editorError.value = ''
   editorOpen.value = true
 }
@@ -32,7 +38,8 @@ async function saveVersion(draft: Resume, title: string) {
   savingVersion.value = true
   editorError.value = ''
   try {
-    await store.addVersion(draft, title)
+    if (creatingSource.value) await store.createResume(draft, title)
+    else await store.addVersion(draft, title)
     editorOpen.value = false
     versionActionError.value = ''
   } catch (cause) {
@@ -42,13 +49,29 @@ async function saveVersion(draft: Resume, title: string) {
   }
 }
 
+async function changeResume(event: Event) {
+  const select = event.target as HTMLSelectElement
+  const id = select.value
+  select.value = resumeId.value
+  if (id === resumeId.value || resumeActionsBusy.value || editorOpen.value) return
+  switchingResume.value = true
+  versionActionError.value = ''
+  try {
+    await store.selectResume(id)
+  } catch (cause) {
+    versionActionError.value = cause instanceof Error ? cause.message : 'Не удалось открыть резюме.'
+  } finally {
+    switchingResume.value = false
+  }
+}
+
 function selectVersion(id: string) {
   versionActionError.value = ''
   store.selectVersion(id)
 }
 
 async function deleteVersion(version: ResumeVersion) {
-  if (deletingVersion.value || restoringVersion.value || savingVersion.value || !historyReady.value) return
+  if (resumeActionsBusy.value || !historyReady.value) return
   if (!window.confirm(`Удалить версию «${version.title}»? Её файл JSON будет удалён с диска. Отменить это действие нельзя.`)) return
 
   deletingVersion.value = true
@@ -63,7 +86,7 @@ async function deleteVersion(version: ResumeVersion) {
 }
 
 async function restoreVersion() {
-  if (restoringVersion.value || deletingVersion.value) return
+  if (resumeActionsBusy.value) return
   restoringVersion.value = true
   try {
     await store.restoreVersion()
@@ -162,14 +185,23 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
         :versions="history"
         :active-id="activeVersion.id"
         :error="historyError"
-        :actions-disabled="!historyReady || deletingVersion || restoringVersion || savingVersion"
+        :actions-disabled="!historyReady || resumeActionsBusy"
         @select="selectVersion"
         @delete="deleteVersion"
       />
       <main class="document-workspace">
         <div class="viewer-toolbar screen-only" aria-label="Панель просмотра">
-          <div class="document-meta"><span class="file-symbol" aria-hidden="true">▤</span><div><strong>{{ resume.profile.name }}</strong><span aria-live="polite">{{ busy ? 'Формируем страницы…' : `${pages.length} стр. · A4` }}</span></div></div>
+          <div class="document-meta"><span class="file-symbol" aria-hidden="true">▤</span><div><strong>{{ plainText(resume.profile.name) || sources.find(source => source.id === resumeId)?.title }}</strong><span aria-live="polite">{{ busy ? 'Формируем страницы…' : `${pages.length} стр. · A4` }}</span></div></div>
           <div class="viewer-actions">
+            <label class="design-control resume-source-control">
+              <span>Резюме</span>
+              <select :value="resumeId" :disabled="!historyReady || resumeActionsBusy" aria-label="Выбрать резюме" @change="changeResume">
+                <option v-for="source in sources" :key="source.id" :value="source.id">{{ source.title }}</option>
+              </select>
+            </label>
+            <button class="resume-control" type="button" :disabled="!historyReady || resumeActionsBusy" @click="openEditor(true)">
+              Новое резюме
+            </button>
             <label class="design-control">
               <span>Дизайн</span>
               <select v-model="design" aria-label="Дизайн резюме">
@@ -178,10 +210,10 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
               </select>
             </label>
             <label class="zoom-control"><span class="sr-only">Масштаб документа</span><select v-model="zoom"><option value="fit">По ширине</option><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option></select></label>
-            <button v-if="!viewingLatest" class="resume-control" type="button" :disabled="!historyReady || restoringVersion || deletingVersion" @click="restoreVersion">
+            <button v-if="!viewingLatest" class="resume-control" type="button" :disabled="!historyReady || resumeActionsBusy" @click="restoreVersion">
               Восстановить
             </button>
-            <button class="resume-control" type="button" :disabled="!historyReady || restoringVersion || deletingVersion" @click="openEditor">Редактировать</button>
+            <button class="resume-control" type="button" :disabled="!historyReady || resumeActionsBusy" @click="openEditor()">Редактировать</button>
             <button class="print-button" type="button" :disabled="busy || !!error" @click="printResume"><span aria-hidden="true">↥</span>Печать / PDF</button>
           </div>
         </div>
@@ -201,7 +233,8 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
 
     <ResumeEditor
       v-if="editorOpen"
-      :resume="resume"
+      :resume="editorResume"
+      :creating-source="creatingSource"
       :version-label="activeVersion.title"
       :error="editorError"
       :saving="savingVersion"

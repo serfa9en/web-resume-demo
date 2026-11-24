@@ -9,9 +9,9 @@ export default defineConfig({
   server: {
     host: '127.0.0.1',
     port: 5173,
-    watch: { ignored: ['**/resume-data/**', '**/src/data/versions/**'] },
+    watch: { ignored: ['**/resume-data/**', '**/src/data/versions/**', '**/src/data/resumes/**'] },
     fs: {
-      deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/resume-data/**', '**/src/data/versions/**'],
+      deny: ['.env', '.env.*', '*.{crt,pem}', '**/.git/**', '**/resume-data/**', '**/src/data/versions/**', '**/src/data/resumes/**'],
     },
   },
   preview: { host: '127.0.0.1' },

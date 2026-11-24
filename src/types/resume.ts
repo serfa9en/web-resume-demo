@@ -1,3 +1,8 @@
+export interface ResumeSource {
+  id: string
+  title: string
+}
+
 export type ResumeDesign = 'two-column' | 'single-column'
 
 export interface Contact {
