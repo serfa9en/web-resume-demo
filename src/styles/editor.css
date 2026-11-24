@@ -188,3 +188,19 @@
 @media print {
   .resume-history, .resume-editor { display: none !important; }
 }
+
+.rich-field { display: grid; gap: 4px; margin: 8px 0; min-width: 0; font-size: 13px; }
+.resume-editor-row > .rich-field { flex: 1; }
+.rich-toolbar { display: flex; flex-wrap: wrap; gap: 4px; }
+.rich-toolbar button { padding: 3px 7px; }
+.rich-mark-b { font-weight: bold; }
+.rich-mark-i { font-style: italic; }
+.rich-mark-u { text-decoration: underline; }
+.rich-input {
+  min-height: 33px;
+  padding: 7px;
+  border: 1px solid #d4c7de;
+  border-radius: 4px;
+  background: #fff;
+}
+.rich-input-multiline { min-height: 105px; }

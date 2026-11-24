@@ -43,6 +43,7 @@ function validResume(value: unknown): value is Resume {
     stringList(profile.tags) &&
     Array.isArray(resume.sections) && resume.sections.every(section => section &&
       typeof section.id === 'string' && typeof section.title === 'string' &&
+      (section.text === undefined || typeof section.text === 'string') &&
       Array.isArray(section.entries) && section.entries.every(entry => entry &&
         typeof entry.id === 'string' &&
         (entry.title === undefined || typeof entry.title === 'string') &&

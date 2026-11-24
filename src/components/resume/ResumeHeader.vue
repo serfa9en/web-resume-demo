@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { textHtml } from '../../utils/richText'
 import { ref, watch } from 'vue'
 import type { Resume, ResumeDesign } from '../../types/resume'
 
@@ -23,8 +24,8 @@ watch(() => props.profile.photo, () => { photoFailed.value = false })
     <div class="resume-header-copy">
       <h1>{{ profile.name }}</h1>
       <div class="resume-header-bottom">
-        <p>{{ profile.role }}</p>
-        <p class="resume-salary">{{ profile.salary }}</p>
+        <p class="rich-text" v-html="textHtml(profile.role)"></p>
+        <p class="resume-salary rich-text" v-html="textHtml(profile.salary)"></p>
       </div>
     </div>
   </header>

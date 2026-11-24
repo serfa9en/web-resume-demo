@@ -96,3 +96,6 @@
   .scaled-sheet { transform: none !important; }
   .resume-page { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
 }
+
+.rich-text { white-space: pre-wrap; overflow-wrap: anywhere; }
+.resume-header .resume-salary { white-space: pre-wrap; }

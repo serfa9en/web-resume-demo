@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
+import { joinText } from '../utils/richText'
 import source from '../data/resume.json'
 import type { DocumentBlock, Resume, ResumeDesign } from '../types/resume'
 
@@ -99,12 +100,17 @@ export const useResumeStore = defineStore('resume', () => {
 
   const contentBlocks = computed<DocumentBlock[]>(() => resume.value.sections.flatMap(section => {
     const result: DocumentBlock[] = [{
-      id: section.id, kind: 'section', text: section.title, keepWithNext: true,
+      id: section.id, kind: 'section', text: section.id === 'section-6' ? 'О себе' : section.title, keepWithNext: true,
     }]
+    if (section.text !== undefined) {
+      if (section.text) result.push({ id: `${section.id}-text`, kind: 'description', text: section.text })
+      else result[0]!.keepWithNext = false
+      return result
+    }
     for (const entry of section.entries) {
       if (entry.title) result.push({ id: `${entry.id}-title`, kind: 'entry', text: entry.title, keepWithNext: true })
       const subtitle = entry.position !== undefined || entry.period !== undefined
-        ? [entry.position, entry.period].filter(Boolean).join(' · ')
+        ? joinText([entry.position ?? '', entry.period ?? ''].filter(Boolean), ' · ')
         : entry.subtitle
       if (subtitle) result.push({ id: `${entry.id}-subtitle`, kind: 'subtitle', text: subtitle, keepWithNext: true })
       entry.fields?.forEach((field, index) => result.push({
@@ -112,9 +118,7 @@ export const useResumeStore = defineStore('resume', () => {
       }))
       if (entry.description?.trim()) {
         result.push({ id: `${entry.id}-description-label`, kind: 'paragraph', text: 'Описание работы', keepWithNext: true })
-        entry.description.split(/\r?\n/).forEach((text, index) => result.push({
-          id: `${entry.id}-description-${index}`, kind: 'description', text,
-        }))
+        result.push({ id: `${entry.id}-description`, kind: 'description', text: entry.description })
       }
       entry.paragraphs?.forEach((text, index) => result.push({ id: `${entry.id}-text-${index}`, kind: 'paragraph', text }))
       entry.items?.forEach((item, index) => result.push({ id: `${entry.id}-item-${index}`, kind: 'bullet', ...item }))
@@ -140,7 +144,7 @@ export const useResumeStore = defineStore('resume', () => {
       ...profile.preferences.map((field, index): DocumentBlock => ({
         id: `profile-preference-${index}`, kind: 'field', text: field.value, label: field.label, href: field.href,
       })),
-      ...(profile.tags.length ? [{ id: 'profile-stack', kind: 'field' as const, label: 'Основной стек', text: profile.tags.join(' · ') }] : []),
+      ...(profile.tags.length ? [{ id: 'profile-stack', kind: 'field' as const, label: 'Основной стек', text: joinText(profile.tags, ' · ') }] : []),
       ...contentBlocks.value,
     ]
   })

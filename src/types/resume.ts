@@ -35,6 +35,7 @@ export interface ResumeSection {
   id: string
   title: string
   entries: ResumeEntry[]
+  text?: string
 }
 
 export interface Resume {

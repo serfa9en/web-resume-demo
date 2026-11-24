@@ -8,6 +8,7 @@ import ResumeBlock from './resume/ResumeBlock.vue'
 import ResumeEditor from './ResumeEditor.vue'
 import ResumeHistory from './ResumeHistory.vue'
 import '../styles/editor.css'
+import { plainText, textHtml } from '../utils/richText'
 import { paginate } from '../utils/paginate'
 import type { DocumentBlock, Resume, ResumePage as Page } from '../types/resume'
 
@@ -104,7 +105,7 @@ async function layout() {
       if (!source) throw new Error('Не найден блок резюме')
       const clone = source.cloneNode(true) as HTMLElement
       const text = clone.querySelector('.block-text, h2, h3')
-      if (text) text.textContent = block.text
+      if (text) text.innerHTML = textHtml(block.text)
       if (!block.label) clone.querySelector('strong')?.remove()
       if (!block.href) clone.querySelector('a')?.remove()
       column.append(clone)
@@ -198,7 +199,7 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
         <footer class="resume-page-footer"></footer>
       </article>
       <article ref="nextMeasure" class="resume-page" :class="`design-${design}`">
-        <div class="continuation-header"><span>{{ resume.profile.name }}</span><span>{{ resume.profile.role }}</span></div>
+        <div class="continuation-header"><span>{{ resume.profile.name }}</span><span>{{ plainText(resume.profile.role) }}</span></div>
         <div class="page-layout"><div class="page-main"><ResumeBlock v-for="block in blocks" :key="block.id" :block="block" /></div></div>
         <footer class="resume-page-footer"></footer>
       </article>

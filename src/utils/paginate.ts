@@ -1,3 +1,4 @@
+import { plainText, sliceText } from './richText'
 import type { DocumentBlock, ResumePage } from '../types/resume'
 
 type Measure = (block: DocumentBlock, firstPage: boolean) => number
@@ -24,7 +25,7 @@ export function paginate(
       const following = queue[next + 1]!
       const followingHeight = measure(following, first)
       groupHeight += followingHeight > available && !following.keepWithNext
-        ? measure({ ...following, text: following.text.split(/\s+/).slice(0, 12).join(' '), href: undefined }, first)
+        ? measure({ ...following, text: sliceText(following.text, 0, plainText(following.text).match(/^(?:\s*\S+){1,12}/)?.[0].length ?? 1), href: undefined }, first)
         : followingHeight
     }
     const page = pages.at(-1)!
@@ -42,21 +43,32 @@ export function paginate(
 
     // Even one unusually long paragraph can exceed a whole sheet. Split by words,
     // measuring each candidate, so no text is clipped or silently discarded.
-    const preserveWhitespace = block.kind === 'description'
-    const words = preserveWhitespace ? (block.text.match(/\S+\s*|\s+/g) ?? []) : block.text.split(/\s+/)
-    const separator = preserveWhitespace ? '' : ' '
-    let low = 1
-    let high = words.length - 1
-    let fit = 0
-    while (low <= high) {
-      const mid = Math.floor((low + high) / 2)
-      if (measure({ ...block, text: words.slice(0, mid).join(separator), href: undefined }, first) <= available) {
-        fit = mid; low = mid + 1
-      } else high = mid - 1
+    const plain = plainText(block.text)
+    let boundaries = Array.from(plain.matchAll(/\S+\s*|\s+/g), match => match.index + match[0].length)
+      .filter(offset => offset < plain.length)
+    function fittingBoundary() {
+      let low = 0
+      let high = boundaries.length - 1
+      let fit = 0
+      while (low <= high) {
+        const mid = (low + high) >>> 1
+        const end = boundaries[mid]!
+        if (measure({ ...block, text: sliceText(block.text, 0, end), href: undefined }, first) <= available) {
+          fit = end
+          low = mid + 1
+        } else high = mid - 1
+      }
+      return fit
     }
-    if (!fit) throw new Error('Блок не помещается на лист A4. Проверьте размер шрифта и длину слова.')
-    const head = { ...block, id: `${block.id}-part-${splitId++}`, text: words.slice(0, fit).join(separator), href: undefined, keepWithNext: false }
-    const tail = { ...block, text: words.slice(fit).join(separator), label: undefined }
+    let fit = fittingBoundary()
+    if (!fit) {
+      let offset = 0
+      boundaries = Array.from(plain, character => (offset += character.length)).slice(0, -1)
+      fit = fittingBoundary()
+    }
+    if (!fit) throw new Error('Блок не помещается на лист A4. Проверьте размер шрифта.')
+    const head = { ...block, id: `${block.id}-part-${splitId++}`, text: sliceText(block.text, 0, fit), href: undefined, keepWithNext: false }
+    const tail = { ...block, text: sliceText(block.text, fit), label: undefined }
     page.blocks.push(head)
     queue[index] = tail
     newPage()

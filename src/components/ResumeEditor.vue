@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
 import type { Resume } from '../types/resume'
+import RichTextField from './RichTextField.vue'
+import { joinText, plainText } from '../utils/richText'
 
 const props = defineProps<{ resume: Resume; versionLabel: string; error: string; saving: boolean }>()
 const emit = defineEmits<{ save: [resume: Resume, label: string]; close: [] }>()
@@ -15,6 +17,57 @@ const jobs = ref((draft.value.sections.find(section => section.id === 'experienc
     const [position = '', ...period] = (entry.subtitle ?? '').split(' · ')
     return { entry, position: entry.position ?? position, period: entry.period ?? period.join(' · ') }
   }))
+
+
+const sections = { hard: 'section-3', soft: 'section-4', courses: 'section-5', about: 'section-6' }
+const courseFields = ['Проводившая организация', 'Год окончания', 'Специальность', 'Формат']
+
+function sectionText(id: string) {
+  return computed({
+    get() {
+      const section = draft.value.sections.find(item => item.id === id)
+      if (section?.text !== undefined) return section.text
+      return joinText((section?.entries ?? []).map(entry => joinText([
+        entry.title ?? '',
+        entry.subtitle ?? '',
+        ...(entry.fields ?? []).map(field => joinText([field.label, field.value], ': ')),
+        ...(entry.paragraphs ?? []),
+        ...(entry.items ?? []).map(item => item.text),
+      ].filter(Boolean), '\n')), '\n\n')
+    },
+    set(text: string) {
+      const section = draft.value.sections.find(item => item.id === id)
+      if (section) section.text = text
+    },
+  })
+}
+const hardSkills = sectionText(sections.hard)
+const softSkills = sectionText(sections.soft)
+const about = sectionText(sections.about)
+const courses = computed(() => draft.value.sections.find(section => section.id === sections.courses)?.entries ?? [])
+
+function addCourse() {
+  const section = draft.value.sections.find(item => item.id === sections.courses)
+  section?.entries.push({
+    id: 'course-' + crypto.randomUUID(),
+    title: '',
+    fields: courseFields.map(label => ({ label, value: '' })),
+  })
+}
+
+const formError = ref('')
+function submit() {
+  if (!plainText(draft.value.profile.role).trim()) {
+    formError.value = 'Укажи название вакансии.'
+    return
+  }
+  if (courses.value.some(course => !plainText(course.title ?? '').trim())) {
+    formError.value = 'Укажи название каждого курса.'
+    return
+  }
+  formError.value = ''
+  emit('save', snapshot(), label.value)
+}
 
 const label = ref('')
 const dialog = ref<HTMLDialogElement>()
@@ -54,7 +107,7 @@ onMounted(() => dialog.value?.showModal())
 
 <template>
   <dialog ref="dialog" class="resume-editor screen-only" aria-labelledby="resume-editor-title" @cancel.prevent="close">
-    <form class="resume-editor-form" @invalid.capture="revealInvalidField" @submit.prevent="emit('save', snapshot(), label)">
+    <form class="resume-editor-form" @invalid.capture="revealInvalidField" @submit.prevent="submit">
       <header class="resume-editor-header">
         <div>
           <h2 id="resume-editor-title">Редактирование резюме</h2>
@@ -66,16 +119,16 @@ onMounted(() => dialog.value?.showModal())
       <fieldset class="resume-editor-fields" :disabled="saving">
         <details open>
           <summary>Вакансия и зарплата</summary>
-          <label>Название вакансии <input v-model.trim="draft.profile.role" required></label>
-          <label>Зарплата <input v-model="draft.profile.salary"></label>
+          <RichTextField v-model="draft.profile.role" label="Название вакансии" :disabled="saving" />
+          <RichTextField v-model="draft.profile.salary" label="Зарплата" :disabled="saving" />
         </details>
 
         <details>
           <summary>Контакты</summary>
           <fieldset v-for="(contact, index) in draft.profile.contacts" :key="index">
-            <legend>{{ contact.label || 'Контакт' }}</legend>
-            <label>Название <input v-model="contact.label" required></label>
-            <label>Значение <input v-model="contact.value" required></label>
+            <legend>{{ plainText(contact.label) || 'Контакт' }}</legend>
+            <RichTextField v-model="contact.label" label="Название" :disabled="saving" />
+            <RichTextField v-model="contact.value" label="Значение" :disabled="saving" />
             <label>Ссылка <input v-model.trim="contact.href" placeholder="https://, mailto: или tel:"></label>
           </fieldset>
         </details>
@@ -83,8 +136,8 @@ onMounted(() => dialog.value?.showModal())
         <details>
           <summary>Условия работы и основной стек</summary>
           <div v-for="(field, index) in draft.profile.preferences" :key="index" class="resume-editor-item">
-            <label>Название пункта <input v-model.trim="field.label" required></label>
-            <label>Значение <input v-model="field.value"></label>
+            <RichTextField v-model="field.label" label="Название пункта" :disabled="saving" />
+            <RichTextField v-model="field.value" label="Значение" :disabled="saving" />
             <button type="button" @click="draft.profile.preferences.splice(index, 1)">Удалить пункт</button>
           </div>
           <button type="button" @click="draft.profile.preferences.push({ label: '', value: '' })">Добавить пункт</button>
@@ -92,7 +145,7 @@ onMounted(() => dialog.value?.showModal())
           <fieldset v-if="draft.profile.tags.length">
             <legend>Основной стек</legend>
             <div v-for="(_, index) in draft.profile.tags" :key="index" class="resume-editor-row">
-              <input v-model.trim="draft.profile.tags[index]" :aria-label="`Навык ${index + 1}`" required>
+              <RichTextField v-model="draft.profile.tags[index]" :label="`Навык ${index + 1}`" :disabled="saving" />
               <button type="button" @click="draft.profile.tags.splice(index, 1)">Удалить навык</button>
             </div>
             <div class="resume-editor-row">
@@ -105,23 +158,44 @@ onMounted(() => dialog.value?.showModal())
 
         <details v-if="personalFields.length">
           <summary>Личная информация</summary>
-          <label v-for="(field, index) in personalFields" :key="index">
-            {{ field.label }}
-            <input v-model="field.value">
-          </label>
+          <RichTextField v-for="(field, index) in personalFields" :key="index"
+            v-model="field.value" :label="plainText(field.label)" :disabled="saving" />
         </details>
 
         <details v-if="jobs.length">
           <summary>Опыт работы</summary>
           <fieldset v-for="job in jobs" :key="job.entry.id">
-            <legend>{{ job.entry.title || 'Место работы' }}</legend>
-            <label>Название компании <input v-model="job.entry.title"></label>
-            <label>Должность <input v-model="job.position"></label>
-            <label>Период работы <input v-model="job.period" placeholder="Например, май 2022 — настоящее время"></label>
-            <label>Описание работы <textarea v-model="job.entry.description" rows="5"></textarea></label>
+            <legend>{{ plainText(job.entry.title ?? '') || 'Место работы' }}</legend>
+            <RichTextField v-model="job.entry.title" label="Название компании" :disabled="saving" />
+            <RichTextField v-model="job.position" label="Должность" :disabled="saving" />
+            <RichTextField v-model="job.period" label="Период работы" :disabled="saving" />
+            <RichTextField v-model="job.entry.description" label="Описание работы" multiline :disabled="saving" />
           </fieldset>
         </details>
 
+        <details>
+          <summary>Hard Skills</summary>
+          <RichTextField v-model="hardSkills" label="Hard Skills" multiline :disabled="saving" />
+        </details>
+        <details>
+          <summary>Soft Skills</summary>
+          <RichTextField v-model="softSkills" label="Soft Skills" multiline :disabled="saving" />
+        </details>
+        <details>
+          <summary>Курсы и тренинги</summary>
+          <fieldset v-for="(course, index) in courses" :key="course.id">
+            <legend>{{ plainText(course.title ?? '') || 'Новый курс' }}</legend>
+            <RichTextField v-model="course.title" label="Название курса" :disabled="saving" />
+            <RichTextField v-for="(field, fieldIndex) in course.fields" :key="fieldIndex"
+              v-model="field.value" :label="field.label" :disabled="saving" />
+            <button type="button" @click="courses.splice(index, 1)">Удалить курс</button>
+          </fieldset>
+          <button type="button" @click="addCourse">Добавить курс</button>
+        </details>
+        <details>
+          <summary>О себе</summary>
+          <RichTextField v-model="about" label="О себе" multiline :disabled="saving" />
+        </details>
         <label>Название новой версии <input v-model="label" placeholder="Например, для вакансии Vue-разработчика"></label>
       </fieldset>
 
@@ -132,7 +206,7 @@ onMounted(() => dialog.value?.showModal())
           <button type="button" class="resume-control" @click="emit('close')">Закрыть без сохранения</button>
         </template>
         <template v-else>
-          <p v-if="error" role="alert" class="resume-editor-error">{{ error }}</p>
+          <p v-if="formError || error" role="alert" class="resume-editor-error">{{ formError || error }}</p>
           <button type="button" class="resume-control" :disabled="saving" @click="close">Отмена</button>
           <button type="submit" class="print-button" :disabled="saving || !dirty">{{ saving ? 'Сохраняем…' : 'Сохранить версию' }}</button>
         </template>
