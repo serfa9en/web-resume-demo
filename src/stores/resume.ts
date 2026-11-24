@@ -91,6 +91,15 @@ export const useResumeStore = defineStore('resume', () => {
     useLatest(await requestHistory({ action: 'save', resume: snapshot, title, skipIdentical }))
   }
 
+  async function deleteVersion(id: string) {
+    if (!historyReady.value) throw new Error('История ещё не загружена.')
+    const versions = await requestHistory({ action: 'delete', id })
+    history.value = versions
+    if (!versions.some(version => version.id === selectedId.value)) {
+      selectedId.value = versions[0]!.id
+    }
+  }
+
   async function restoreVersion() {
     if (!viewingLatest.value) {
       await addVersion(activeVersion.value.resume, `Восстановлено из «${activeVersion.value.title}»`, false)
@@ -149,5 +158,5 @@ export const useResumeStore = defineStore('resume', () => {
     ]
   })
 
-  return { resume, design, blocks, history, historyError, historyReady, initializeHistory, activeVersion, viewingLatest, selectVersion, addVersion, restoreVersion }
+  return { resume, design, blocks, history, historyError, historyReady, initializeHistory, activeVersion, viewingLatest, selectVersion, addVersion, restoreVersion, deleteVersion }
 })

@@ -204,3 +204,16 @@
   background: #fff;
 }
 .rich-input-multiline { min-height: 105px; }
+
+.resume-history li > .resume-history-delete {
+  width: auto;
+  margin: 1px 0 6px 8px;
+  padding: 3px 5px;
+  color: #8e2133;
+  font-size: 12px;
+}
+
+.resume-history li > .resume-history-delete:disabled {
+  opacity: 0.55;
+  cursor: default;
+}

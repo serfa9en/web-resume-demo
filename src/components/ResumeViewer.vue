@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { storeToRefs } from 'pinia'
-import { useResumeStore } from '../stores/resume'
+import { useResumeStore, type ResumeVersion } from '../stores/resume'
 import ResumePage from './resume/ResumePage.vue'
 import ResumeHeader from './resume/ResumeHeader.vue'
 import ResumeBlock from './resume/ResumeBlock.vue'
@@ -19,6 +19,7 @@ const editorOpen = ref(false)
 const editorError = ref('')
 const savingVersion = ref(false)
 const restoringVersion = ref(false)
+const deletingVersion = ref(false)
 const versionActionError = ref('')
 
 function openEditor() {
@@ -46,8 +47,23 @@ function selectVersion(id: string) {
   store.selectVersion(id)
 }
 
+async function deleteVersion(version: ResumeVersion) {
+  if (deletingVersion.value || restoringVersion.value || savingVersion.value || !historyReady.value) return
+  if (!window.confirm(`Удалить версию «${version.title}»? Её файл JSON будет удалён с диска. Отменить это действие нельзя.`)) return
+
+  deletingVersion.value = true
+  versionActionError.value = ''
+  try {
+    await store.deleteVersion(version.id)
+  } catch (cause) {
+    versionActionError.value = cause instanceof Error ? cause.message : 'Не удалось удалить версию.'
+  } finally {
+    deletingVersion.value = false
+  }
+}
+
 async function restoreVersion() {
-  if (restoringVersion.value) return
+  if (restoringVersion.value || deletingVersion.value) return
   restoringVersion.value = true
   try {
     await store.restoreVersion()
@@ -146,7 +162,9 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
         :versions="history"
         :active-id="activeVersion.id"
         :error="historyError"
+        :actions-disabled="!historyReady || deletingVersion || restoringVersion || savingVersion"
         @select="selectVersion"
+        @delete="deleteVersion"
       />
       <main class="document-workspace">
         <div class="viewer-toolbar screen-only" aria-label="Панель просмотра">
@@ -160,10 +178,10 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
               </select>
             </label>
             <label class="zoom-control"><span class="sr-only">Масштаб документа</span><select v-model="zoom"><option value="fit">По ширине</option><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option></select></label>
-            <button v-if="!viewingLatest" class="resume-control" type="button" :disabled="!historyReady || restoringVersion" @click="restoreVersion">
+            <button v-if="!viewingLatest" class="resume-control" type="button" :disabled="!historyReady || restoringVersion || deletingVersion" @click="restoreVersion">
               Восстановить
             </button>
-            <button class="resume-control" type="button" :disabled="!historyReady || restoringVersion" @click="openEditor">Редактировать</button>
+            <button class="resume-control" type="button" :disabled="!historyReady || restoringVersion || deletingVersion" @click="openEditor">Редактировать</button>
             <button class="print-button" type="button" :disabled="busy || !!error" @click="printResume"><span aria-hidden="true">↥</span>Печать / PDF</button>
           </div>
         </div>

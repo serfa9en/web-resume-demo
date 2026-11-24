@@ -1,8 +1,8 @@
 <script setup lang="ts">
 import type { ResumeVersion } from '../stores/resume'
 
-defineProps<{ versions: ResumeVersion[]; activeId: string; error: string }>()
-defineEmits<{ select: [id: string] }>()
+defineProps<{ versions: ResumeVersion[]; activeId: string; error: string; actionsDisabled: boolean }>()
+defineEmits<{ select: [id: string]; delete: [version: ResumeVersion] }>()
 
 const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeStyle: 'short', timeZone: 'Asia/Yekaterinburg' })
 </script>
@@ -24,6 +24,14 @@ const dateFormat = new Intl.DateTimeFormat('ru-RU', { dateStyle: 'short', timeSt
           </time>
           <span v-if="index === 0">Последняя версия</span>
         </button>
+        <button
+          v-if="version.createdAt && version.id !== 'original'"
+          type="button"
+          class="resume-history-delete"
+          :aria-label="'Удалить версию «' + version.title + '»'"
+          :disabled="actionsDisabled"
+          @click="$emit('delete', version)"
+        >Удалить</button>
       </li>
     </ol>
   </aside>

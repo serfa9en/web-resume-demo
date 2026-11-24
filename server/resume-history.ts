@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { link, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises'
+import { link, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { fileURLToPath } from 'node:url'
@@ -8,6 +8,7 @@ import type { Resume } from '../src/types/resume'
 import type { ResumeVersion } from '../src/stores/resume'
 
 const directory = fileURLToPath(new URL('../src/data/versions/', import.meta.url))
+const deletedFile = join(directory, '.deleted-ids.json')
 const legacyFile = fileURLToPath(new URL('../resume-data/history.json', import.meta.url))
 const seedFile = fileURLToPath(new URL('../src/data/resume.json', import.meta.url))
 const route = '/api/resume-versions'
@@ -107,14 +108,15 @@ async function saveVersion(version: ResumeVersion) {
 
 async function readVersionFiles() {
   const entries = await readdir(directory, { withFileTypes: true })
-  const versions: { version: ResumeVersion; slot: number }[] = []
+  const versions: { version: ResumeVersion; slot: number; path: string }[] = []
 
   async function readFolder(folder: string, slot: number, files: typeof entries) {
     for (const entry of files) {
       if (!entry.isFile() || !versionFilename.test(entry.name)) continue
-      const data: unknown = JSON.parse(await readFile(join(folder, entry.name), 'utf8'))
+      const path = join(folder, entry.name)
+      const data: unknown = JSON.parse(await readFile(path, 'utf8'))
       if (!validVersion(data) || !data.createdAt) throw new Error(`Invalid version file: ${entry.name}`)
-      versions.push({ version: data, slot })
+      versions.push({ version: data, slot, path })
     }
   }
 
@@ -126,11 +128,11 @@ async function readVersionFiles() {
   }
   return versions.sort((a, b) =>
     Date.parse(b.version.createdAt!) - Date.parse(a.version.createdAt!) || b.slot - a.slot,
-  ).map(({ version }) => version)
+  )
 }
 
 async function importVersions(versions: ResumeVersion[], current: ResumeVersion[]) {
-  const ids = new Set(current.map(version => version.id))
+  const ids = new Set([...await readDeletedIds(), ...current.map(version => version.id)])
   for (const version of versions) {
     if (!version.createdAt || ids.has(version.id)) continue
     await saveVersion(version)
@@ -153,7 +155,7 @@ async function readLegacyHistory(): Promise<ResumeVersion[]> {
 
 async function loadHistory(): Promise<ResumeVersion[]> {
   await mkdir(directory, { recursive: true })
-  const versions = await readVersionFiles()
+  const versions = (await readVersionFiles()).map(({ version }) => version)
   const resume: unknown = JSON.parse(await readFile(seedFile, 'utf8'))
   if (!validResume(resume)) throw new Error('Invalid initial resume')
   return [...versions, { id: 'original', title: 'Исходное резюме', createdAt: null, resume }]
@@ -179,7 +181,55 @@ async function readBody(request: IncomingMessage): Promise<Record<string, unknow
   throw new RequestError(400, 'Некорректный JSON.')
 }
 
+async function readDeletedIds(): Promise<string[]> {
+  let content: string
+  try {
+    content = await readFile(deletedFile, 'utf8')
+  } catch (cause) {
+    if ((cause as NodeJS.ErrnoException).code === 'ENOENT') return []
+    throw cause
+  }
+  const ids: unknown = JSON.parse(content)
+  if (!stringList(ids)) throw new Error('Invalid deleted version IDs')
+  return ids
+}
+
+async function replaceJson(path: string, value: unknown) {
+  const temp = path + '.' + randomUUID() + '.tmp'
+  try {
+    await writeFile(temp, JSON.stringify(value, null, 2) + '\n', { encoding: 'utf8', flag: 'wx' })
+    await rename(temp, path)
+  } finally {
+    await rm(temp, { force: true })
+  }
+}
+
+async function deleteVersion(id: string) {
+  if (id === 'original') throw new RequestError(400, 'Исходное резюме удалить нельзя.')
+
+  const matching = (await readVersionFiles()).filter(file => file.version.id === id)
+  if (!matching.length) return loadHistory()
+
+  // Record only the ID so old browser copies cannot reimport the deleted version.
+  const deleted = await readDeletedIds()
+  if (!deleted.includes(id)) await replaceJson(deletedFile, [...deleted, id])
+
+  const legacy = await readLegacyHistory()
+  const remaining = legacy.filter(version => version.id !== id)
+  if (remaining.length !== legacy.length) await replaceJson(legacyFile, remaining)
+
+  for (const file of matching) await rm(file.path, { force: true })
+  return loadHistory()
+}
+
 async function applyChange(body: Record<string, unknown>, history: ResumeVersion[]) {
+  if (body.action === 'delete') {
+    if (typeof body.id !== 'string' || !body.id) {
+      throw new RequestError(400, 'Не указана версия для удаления.')
+    }
+    return deleteVersion(body.id)
+  }
+
   if (body.action === 'migrate') {
     if (!Array.isArray(body.versions) || !body.versions.every(validVersion)) {
       throw new RequestError(400, 'Старые версии имеют неверный формат.')
