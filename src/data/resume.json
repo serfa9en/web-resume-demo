@@ -1,7 +1,7 @@
 {
   "profile": {
     "name": "Беляева Мария Владимировна",
-    "role": "Fullstack разработчик",
+    "role": "Fullstack разработчик (Vue + java)",
     "salary": "150 000 ₽",
     "photo": "photo.png",
     "birthDate": "2000-04-07",
@@ -34,7 +34,7 @@
       },
       {
         "label": "Формат работы",
-        "value": "Удалённо, на месте работодателя"
+        "value": "Удалённо"
       },
       {
         "label": "Командировки",
@@ -46,7 +46,7 @@
       },
       {
         "label": "Английский язык",
-        "value": "Intermediate (B1)"
+        "value": "Upper-Intermediate (B2)"
       }
     ],
     "tags": [

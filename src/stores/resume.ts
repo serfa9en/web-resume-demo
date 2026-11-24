@@ -1,13 +1,14 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
 import source from '../data/resume.json'
-import type { DocumentBlock, Resume } from '../types/resume'
+import type { DocumentBlock, Resume, ResumeDesign } from '../types/resume'
 
 export const useResumeStore = defineStore('resume', () => {
   // JSON is the source of truth. No database or server is required for this step.
   const resume = ref<Resume>(structuredClone(source))
+  const design = ref<ResumeDesign>('two-column')
 
-  const blocks = computed<DocumentBlock[]>(() => resume.value.sections.flatMap(section => {
+  const contentBlocks = computed<DocumentBlock[]>(() => resume.value.sections.flatMap(section => {
     const result: DocumentBlock[] = [{
       id: section.id, kind: 'section', text: section.title, keepWithNext: true,
     }]
@@ -26,5 +27,25 @@ export const useResumeStore = defineStore('resume', () => {
     return result
   }))
 
-  return { resume, blocks }
+  const blocks = computed<DocumentBlock[]>(() => {
+    if (design.value === 'two-column') return contentBlocks.value
+    const profile = resume.value.profile
+    // In a single column the former sidebar becomes ordinary paginated content.
+    // Both designs use the same profile, without copying or losing its fields.
+    return [
+      { id: 'profile-contacts', kind: 'section', text: 'Контакты', keepWithNext: true },
+      ...profile.contacts.map((contact, index): DocumentBlock => ({
+        id: `profile-contact-${index}`, kind: 'field', label: contact.label,
+        text: contact.value, href: contact.href,
+      })),
+      { id: 'profile-preferences', kind: 'section', text: 'Условия работы', keepWithNext: true },
+      ...profile.preferences.map((field, index): DocumentBlock => ({
+        id: `profile-preference-${index}`, kind: 'field', text: field.value, label: field.label,
+      })),
+      { id: 'profile-stack', kind: 'field', label: 'Основной стек', text: profile.tags.join(' · ') },
+      ...contentBlocks.value,
+    ]
+  })
+
+  return { resume, design, blocks }
 })

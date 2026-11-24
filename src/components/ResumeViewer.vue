@@ -8,7 +8,7 @@ import ResumeBlock from './resume/ResumeBlock.vue'
 import { paginate } from '../utils/paginate'
 import type { DocumentBlock, ResumePage as Page } from '../types/resume'
 
-const { resume, blocks } = storeToRefs(useResumeStore())
+const { resume, design, blocks } = storeToRefs(useResumeStore())
 const pages = ref<Page[]>([])
 const error = ref('')
 const busy = ref(true)
@@ -16,7 +16,6 @@ const zoom = ref('fit')
 const stage = ref<HTMLElement>()
 const firstMeasure = ref<HTMLElement>()
 const nextMeasure = ref<HTMLElement>()
-const activeSection = ref('')
 const stageWidth = ref(900)
 let resizeObserver: ResizeObserver | undefined
 let generation = 0
@@ -74,12 +73,6 @@ async function layout() {
   }
 }
 
-function goToSection(id: string) {
-  const index = pages.value.findIndex(page => page.blocks.some(block => block.id === id))
-  document.getElementById(`sheet-${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
-  activeSection.value = id
-}
-
 function printResume() { window.print() }
 
 onMounted(() => {
@@ -99,25 +92,17 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
     </header>
 
     <div class="workspace-body">
-      <aside class="document-nav screen-only" aria-label="Разделы резюме">
-        <p class="nav-caption">ДОКУМЕНТ</p>
-        <h1>Моё резюме</h1>
-        <p class="nav-description">Всё о твоём опыте.<br />В одном документе.</p>
-        <div class="nav-rule"></div>
-        <p class="nav-caption">СОДЕРЖАНИЕ</p>
-        <nav>
-          <button v-for="(section, index) in resume.sections" :key="section.id" type="button"
-            :class="{ active: activeSection === section.id }" :disabled="busy || !!error" @click="goToSection(section.id)">
-            <span class="nav-index">{{ String(index + 1).padStart(2, '0') }}</span>{{ section.title }}
-          </button>
-        </nav>
-        <div class="nav-note"><span class="note-icon">A4</span><p>Готово к печати<span>210 × 297 мм</span></p></div>
-      </aside>
-
       <main class="document-workspace">
         <div class="viewer-toolbar screen-only" aria-label="Панель просмотра">
           <div class="document-meta"><span class="file-symbol" aria-hidden="true">▤</span><div><strong>Беляева Мария</strong><span aria-live="polite">{{ busy ? 'Формируем страницы…' : `${pages.length} стр. · A4` }}</span></div></div>
           <div class="viewer-actions">
+            <label class="design-control">
+              <span>Дизайн</span>
+              <select v-model="design" aria-label="Дизайн резюме">
+                <option value="two-column">Две колонки</option>
+                <option value="single-column">Одна колонка</option>
+              </select>
+            </label>
             <label class="zoom-control"><span class="sr-only">Масштаб документа</span><select v-model="zoom"><option value="fit">По ширине</option><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option></select></label>
             <button class="print-button" type="button" :disabled="busy || !!error" @click="printResume"><span aria-hidden="true">↥</span>Печать / PDF</button>
           </div>
@@ -127,7 +112,7 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
           <p v-if="error" role="alert" class="layout-error screen-only">{{ error }}</p>
           <div v-for="(page, index) in pages" :id="`sheet-${index}`" :key="index" class="sheet-wrapper" :style="pageStyle">
             <div class="scaled-sheet" :style="{ transform: `scale(${scale})` }">
-              <ResumePage :page="page" :profile="resume.profile" :number="index + 1" :total="pages.length" />
+              <ResumePage :page="page" :profile="resume.profile" :number="index + 1" :total="pages.length" :design="design" />
             </div>
           </div>
           <p v-if="pages.length" class="end-note screen-only">Конец документа · {{ pages.length }} стр.</p>
@@ -137,12 +122,12 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
 
     <!-- Real-size copies are independent of screen zoom and viewport width. -->
     <div class="measurement-root" aria-hidden="true" inert>
-      <article ref="firstMeasure" class="resume-page">
-        <ResumeHeader :profile="resume.profile" />
-        <div class="page-layout page-layout-first"><div></div><div class="page-main"><ResumeBlock v-for="block in blocks" :key="block.id" :block="block" /></div></div>
+      <article ref="firstMeasure" class="resume-page" :class="`design-${design}`">
+        <ResumeHeader :profile="resume.profile" :design="design" />
+        <div class="page-layout" :class="{ 'page-layout-first': design === 'two-column' }"><div v-if="design === 'two-column'"></div><div class="page-main"><ResumeBlock v-for="block in blocks" :key="block.id" :block="block" /></div></div>
         <footer class="resume-page-footer"></footer>
       </article>
-      <article ref="nextMeasure" class="resume-page">
+      <article ref="nextMeasure" class="resume-page" :class="`design-${design}`">
         <div class="continuation-header"><span>{{ resume.profile.name }}</span><span>{{ resume.profile.role }}</span></div>
         <div class="page-layout"><div class="page-main"><ResumeBlock v-for="block in blocks" :key="block.id" :block="block" /></div></div>
         <footer class="resume-page-footer"></footer>
