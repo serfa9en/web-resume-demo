@@ -1,0 +1,152 @@
+<script setup lang="ts">
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { storeToRefs } from 'pinia'
+import { useResumeStore } from '../stores/resume'
+import ResumePage from './resume/ResumePage.vue'
+import ResumeHeader from './resume/ResumeHeader.vue'
+import ResumeBlock from './resume/ResumeBlock.vue'
+import { paginate } from '../utils/paginate'
+import type { DocumentBlock, ResumePage as Page } from '../types/resume'
+
+const { resume, blocks } = storeToRefs(useResumeStore())
+const pages = ref<Page[]>([])
+const error = ref('')
+const busy = ref(true)
+const zoom = ref('fit')
+const stage = ref<HTMLElement>()
+const firstMeasure = ref<HTMLElement>()
+const nextMeasure = ref<HTMLElement>()
+const activeSection = ref('')
+const stageWidth = ref(900)
+let resizeObserver: ResizeObserver | undefined
+let generation = 0
+let disposed = false
+
+const a4Width = 210 * 96 / 25.4
+const a4Height = 297 * 96 / 25.4
+const scale = computed(() => zoom.value === 'fit'
+  ? Math.min(1, Math.max(0.15, (stageWidth.value - 40) / a4Width))
+  : Number(zoom.value) / 100)
+const pageStyle = computed(() => ({ width: `${a4Width * scale.value}px`, height: `${a4Height * scale.value}px` }))
+
+async function layout() {
+  const run = ++generation
+  busy.value = true
+  error.value = ''
+  await nextTick()
+  await document.fonts.ready
+  if (disposed || run !== generation) return
+  try {
+    const sheets = [firstMeasure.value!, nextMeasure.value!]
+    const columns = sheets.map(sheet => sheet.querySelector<HTMLElement>('.page-main')!)
+    const capacities = sheets.map((sheet, i) => {
+      const bottom = sheet.querySelector('.resume-page-footer')!.getBoundingClientRect().top
+      return bottom - columns[i]!.getBoundingClientRect().top - 14
+    })
+    const sources = columns.map(column => new Map(
+      Array.from(column.children).map((element, i) => [blocks.value[i]!.id, element]),
+    ))
+    const cache = new Map<string, number>()
+    const measure = (block: DocumentBlock, first: boolean) => {
+      const key = JSON.stringify([first, block])
+      const cached = cache.get(key)
+      if (cached !== undefined) return cached
+      const column = columns[first ? 0 : 1]!
+      const source = sources[first ? 0 : 1]!.get(block.id)
+      if (!source) throw new Error('Не найден блок резюме')
+      const clone = source.cloneNode(true) as HTMLElement
+      const text = clone.querySelector('.block-text, h2, h3')
+      if (text) text.textContent = block.text
+      if (!block.label) clone.querySelector('strong')?.remove()
+      if (!block.href) clone.querySelector('a')?.remove()
+      column.append(clone)
+      // Blocks use internal padding instead of collapsing margins.
+      const height = clone.getBoundingClientRect().height
+      clone.remove()
+      cache.set(key, height)
+      return height
+    }
+    pages.value = paginate(blocks.value, first => capacities[first ? 0 : 1]!, measure)
+  } catch (cause) {
+    error.value = cause instanceof Error ? cause.message : 'Не удалось сформировать страницы'
+  } finally {
+    if (run === generation) busy.value = false
+  }
+}
+
+function goToSection(id: string) {
+  const index = pages.value.findIndex(page => page.blocks.some(block => block.id === id))
+  document.getElementById(`sheet-${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+  activeSection.value = id
+}
+
+function printResume() { window.print() }
+
+onMounted(() => {
+  resizeObserver = new ResizeObserver(entries => { stageWidth.value = entries[0]!.contentRect.width })
+  if (stage.value) resizeObserver.observe(stage.value)
+  void layout()
+})
+watch(blocks, () => { void layout() }, { deep: true })
+onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnect() })
+</script>
+
+<template>
+  <div class="workspace">
+    <header class="app-header screen-only">
+      <a class="brand" href="#" aria-label="Резюме — на главную"><span class="brand-icon">р.</span>Резюме<span class="brand-divider">/</span><span class="brand-caption">Моё рабочее пространство</span></a>
+      <span class="version-badge"><span></span>Базовая версия</span>
+    </header>
+
+    <div class="workspace-body">
+      <aside class="document-nav screen-only" aria-label="Разделы резюме">
+        <p class="nav-caption">ДОКУМЕНТ</p>
+        <h1>Моё резюме</h1>
+        <p class="nav-description">Всё о твоём опыте.<br />В одном документе.</p>
+        <div class="nav-rule"></div>
+        <p class="nav-caption">СОДЕРЖАНИЕ</p>
+        <nav>
+          <button v-for="(section, index) in resume.sections" :key="section.id" type="button"
+            :class="{ active: activeSection === section.id }" :disabled="busy || !!error" @click="goToSection(section.id)">
+            <span class="nav-index">{{ String(index + 1).padStart(2, '0') }}</span>{{ section.title }}
+          </button>
+        </nav>
+        <div class="nav-note"><span class="note-icon">A4</span><p>Готово к печати<span>210 × 297 мм</span></p></div>
+      </aside>
+
+      <main class="document-workspace">
+        <div class="viewer-toolbar screen-only" aria-label="Панель просмотра">
+          <div class="document-meta"><span class="file-symbol" aria-hidden="true">▤</span><div><strong>Беляева Мария</strong><span aria-live="polite">{{ busy ? 'Формируем страницы…' : `${pages.length} стр. · A4` }}</span></div></div>
+          <div class="viewer-actions">
+            <label class="zoom-control"><span class="sr-only">Масштаб документа</span><select v-model="zoom"><option value="fit">По ширине</option><option value="50">50%</option><option value="75">75%</option><option value="100">100%</option><option value="125">125%</option></select></label>
+            <button class="print-button" type="button" :disabled="busy || !!error" @click="printResume"><span aria-hidden="true">↥</span>Печать / PDF</button>
+          </div>
+        </div>
+
+        <div ref="stage" class="document-stage" :aria-busy="busy">
+          <p v-if="error" role="alert" class="layout-error screen-only">{{ error }}</p>
+          <div v-for="(page, index) in pages" :id="`sheet-${index}`" :key="index" class="sheet-wrapper" :style="pageStyle">
+            <div class="scaled-sheet" :style="{ transform: `scale(${scale})` }">
+              <ResumePage :page="page" :profile="resume.profile" :number="index + 1" :total="pages.length" />
+            </div>
+          </div>
+          <p v-if="pages.length" class="end-note screen-only">Конец документа · {{ pages.length }} стр.</p>
+        </div>
+      </main>
+    </div>
+
+    <!-- Real-size copies are independent of screen zoom and viewport width. -->
+    <div class="measurement-root" aria-hidden="true" inert>
+      <article ref="firstMeasure" class="resume-page">
+        <ResumeHeader :profile="resume.profile" />
+        <div class="page-layout page-layout-first"><div></div><div class="page-main"><ResumeBlock v-for="block in blocks" :key="block.id" :block="block" /></div></div>
+        <footer class="resume-page-footer"></footer>
+      </article>
+      <article ref="nextMeasure" class="resume-page">
+        <div class="continuation-header"><span>{{ resume.profile.name }}</span><span>{{ resume.profile.role }}</span></div>
+        <div class="page-layout"><div class="page-main"><ResumeBlock v-for="block in blocks" :key="block.id" :block="block" /></div></div>
+        <footer class="resume-page-footer"></footer>
+      </article>
+    </div>
+  </div>
+</template>
