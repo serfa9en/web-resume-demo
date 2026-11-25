@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
-import { blankResume, defaultSources, MAIN_RESUME_ID } from '../src/utils/resumeSources'
+import { defaultSources, MAIN_RESUME_ID } from '../src/utils/resumeSources'
 import type { Resume, ResumeSource } from '../src/types/resume'
 import type { ResumeVersion } from '../src/stores/resume'
 
@@ -129,7 +129,6 @@ async function readCustomSource(id: string): Promise<SavedSource> {
 async function readSource(id: string): Promise<SavedSource> {
   const builtin = defaultSources.find(item => item.id === id)
   if (!builtin) return readCustomSource(id)
-  if (id !== MAIN_RESUME_ID) return { ...builtin, resume: blankResume() }
   const resume: unknown = JSON.parse(await readFile(seedFile, 'utf8'))
   if (!validResume(resume)) throw new Error('Invalid initial resume')
   return { ...builtin, resume }

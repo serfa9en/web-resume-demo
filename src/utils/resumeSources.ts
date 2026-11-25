@@ -3,8 +3,8 @@ import type { Resume, ResumeEntry, ResumeSource } from '../types/resume'
 export const MAIN_RESUME_ID = 'main'
 export const defaultSources: ResumeSource[] = [
   { id: MAIN_RESUME_ID, title: 'Основное резюме' },
-  { id: 'template-2', title: 'Резюме 2' },
-  { id: 'template-3', title: 'Резюме 3' },
+  { id: 'template-2', title: 'Резюме 2 — Frontend' },
+  { id: 'template-3', title: 'Резюме 3 — Backend' },
 ]
 
 export function blankJob(id: string): ResumeEntry {
