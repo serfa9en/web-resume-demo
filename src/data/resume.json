@@ -98,7 +98,7 @@
         {
           "id": "it-service",
           "title": "ООО «ИТ-сервис»",
-          "subtitle": "Инженер-программист 1 категории · Май 2022 — настоящее время",
+          "subtitle": "Инженер-программист 1 категории · Май 2022 — август 2026",
           "fields": [
             {
               "label": "Отдел",
@@ -161,20 +161,6 @@
             },
             {
               "text": "Настройка мониторинга (сбор данных и визуализация): Zabbix + Grafana"
-            }
-          ]
-        },
-        {
-          "id": "other-tasks",
-          "title": "Остальные задачи",
-          "items": [
-            {
-              "text": "Разработка Телеграм-бота (Java) для Цифрового Форума 2024",
-              "href": "https://github.com/serfa9en/telegram-bot-ivs-corp-forum.git"
-            },
-            {
-              "text": "Разработка интерфейсного приложения для робота Promobot V4 (Vue.js)",
-              "href": "https://github.com/serfa9en/robot-v2-psma.git"
             }
           ]
         }

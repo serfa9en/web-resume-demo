@@ -11,7 +11,11 @@ import type { ResumeVersion } from '../src/stores/resume'
 const mainDirectory = fileURLToPath(new URL('../src/data/versions/', import.meta.url))
 const sourcesDirectory = fileURLToPath(new URL('../src/data/resumes/', import.meta.url))
 const legacyFile = fileURLToPath(new URL('../resume-data/history.json', import.meta.url))
-const seedFile = fileURLToPath(new URL('../src/data/resume.json', import.meta.url))
+const builtinFiles: Readonly<Record<string, string>> = {
+  [MAIN_RESUME_ID]: fileURLToPath(new URL('../src/data/resume.json', import.meta.url)),
+  'template-2': fileURLToPath(new URL('../src/data/resume-frontend.json', import.meta.url)),
+  'template-3': fileURLToPath(new URL('../src/data/resume-backend.json', import.meta.url)),
+}
 const sourcesRoute = '/api/resumes'
 const route = '/api/resume-versions'
 
@@ -129,8 +133,10 @@ async function readCustomSource(id: string): Promise<SavedSource> {
 async function readSource(id: string): Promise<SavedSource> {
   const builtin = defaultSources.find(item => item.id === id)
   if (!builtin) return readCustomSource(id)
-  const resume: unknown = JSON.parse(await readFile(seedFile, 'utf8'))
-  if (!validResume(resume)) throw new Error('Invalid initial resume')
+  const filename = builtinFiles[builtin.id]
+  if (!filename) throw new Error('Missing file for built-in resume: ' + builtin.id)
+  const resume: unknown = JSON.parse(await readFile(filename, 'utf8'))
+  if (!validResume(resume)) throw new Error('Invalid built-in resume: ' + builtin.id)
   return { ...builtin, resume }
 }
 

@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import type { Resume } from '../types/resume'
 import RichTextField from './RichTextField.vue'
 import { blankJob } from '../utils/resumeSources'
+import { editableWorkDescription, replaceWorkDescription } from '../utils/workDescription'
 import { joinText, plainText } from '../utils/richText'
 
 const props = defineProps<{ resume: Resume; versionLabel: string; error: string; saving: boolean; creatingSource?: boolean }>()
@@ -18,14 +19,17 @@ const jobs = ref((experience.value?.entries ?? [])
   .filter(entry => entry.id === 'it-service' || entry.subtitle || entry.position !== undefined || entry.period !== undefined)
   .map(entry => {
     const [position = '', ...period] = (entry.subtitle ?? '').split(' · ')
-    return { entry, position: entry.position ?? position, period: entry.period ?? period.join(' · ') }
+    return {
+      entry, position: entry.position ?? position, period: entry.period ?? period.join(' · '),
+      description: editableWorkDescription(entry),
+    }
   }))
 
 
 function addJob() {
   const entry = blankJob('job-' + crypto.randomUUID())
   experience.value?.entries.push(entry)
-  jobs.value.push({ entry, position: '', period: '' })
+  jobs.value.push({ entry, position: '', period: '', description: '' })
 }
 
 function removeJob(index: number) {
@@ -99,6 +103,7 @@ function snapshot(): Resume {
   for (const job of jobs.value) {
     const entry = entries.find(item => item.id === job.entry.id)
     if (!entry) continue
+    replaceWorkDescription(entry, job.description)
     const [oldPosition = '', ...oldPeriod] = (entry.subtitle ?? '').split(' · ')
     if (job.position !== (entry.position ?? oldPosition) || job.period !== (entry.period ?? oldPeriod.join(' · '))) {
       entry.position = job.position
@@ -192,7 +197,7 @@ onMounted(() => dialog.value?.showModal())
             <RichTextField v-model="job.entry.title" label="Название компании" :disabled="saving" />
             <RichTextField v-model="job.position" label="Должность" :disabled="saving" />
             <RichTextField v-model="job.period" label="Период работы" :disabled="saving" />
-            <RichTextField v-model="job.entry.description" label="Описание работы" multiline :disabled="saving" />
+            <RichTextField v-model="job.description" label="Описание работы" multiline :disabled="saving" />
             <button type="button" @click="removeJob(index)">Удалить место работы</button>
           </fieldset>
           <button type="button" @click="addJob">Добавить место работы</button>
