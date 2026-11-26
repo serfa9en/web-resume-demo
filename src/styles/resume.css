@@ -99,3 +99,19 @@
 
 .rich-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .resume-header .resume-salary { white-space: pre-wrap; }
+
+/* Отступ сверху у «Контактов», «Личной информации» и других разделов */
+.design-single-column .block-section {
+  padding-top: 2mm; /* было 4mm */
+}
+
+/* Отступ сверху у подзаголовков вроде «Языки программирования» */
+.design-single-column .block-entry {
+  padding-top: 1mm; /* было 2mm */
+}
+
+/* Расстояние между строками «Телефон», «Почта», «Java» и т. д. */
+.design-single-column .block-field {
+  padding-bottom: 0.5mm; /* было 1.2mm */
+  line-height: 1.3;      /* было 1.5 */
+}

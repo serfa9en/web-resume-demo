@@ -163,7 +163,6 @@ export const useResumeStore = defineStore('resume', () => {
         id: `${entry.id}-field-${index}`, kind: 'field', text: field.value, label: field.label, href: field.href,
       }))
       if (entry.description?.trim()) {
-        result.push({ id: `${entry.id}-description-label`, kind: 'paragraph', text: 'Описание работы', keepWithNext: true })
         result.push({ id: `${entry.id}-description`, kind: 'description', text: entry.description })
       }
       entry.paragraphs?.forEach((text, index) => result.push({ id: `${entry.id}-text-${index}`, kind: 'paragraph', text }))
@@ -196,11 +195,35 @@ export const useResumeStore = defineStore('resume', () => {
     ] : []
     // In a single column the former sidebar becomes ordinary paginated content.
     // Both designs use the same profile, without copying or losing its fields.
+    const content = [...contentBlocks.value]
+    const educationIndex = content.findIndex(
+      block => block.kind === 'section' && block.id === 'education',
+    )
+
+    if (educationIndex !== -1) {
+      const nextSectionIndex = content.findIndex(
+        (block, index) => index > educationIndex && block.kind === 'section',
+      )
+
+      content.splice(
+        nextSectionIndex === -1 ? content.length : nextSectionIndex,
+        0,
+        ...preferenceBlocks,
+      )
+    }
+
     return [
       ...contactBlocks,
-      ...preferenceBlocks,
-      ...(profile.tags.length ? [{ id: 'profile-stack', kind: 'field' as const, label: 'Основной стек', text: joinText(profile.tags, ' · ') }] : []),
-      ...contentBlocks.value,
+      ...(educationIndex === -1 ? preferenceBlocks : []),
+      ...(profile.tags.length
+        ? [{
+            id: 'profile-stack',
+            kind: 'field' as const,
+            label: 'Основной стек',
+            text: joinText(profile.tags, ' · '),
+          }]
+        : []),
+      ...content,
     ]
   })
 
