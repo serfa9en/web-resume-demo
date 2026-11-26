@@ -15,6 +15,17 @@ const personalFields = computed(() =>
 )
 const experience = computed(() => draft.value.sections.find(section => section.id === 'experience'))
 const education = computed(() => draft.value.sections.find(section => section.id === 'education')?.entries ?? [])
+const projects = ref(
+  draft.value.sections.find(section => section.id === 'pet-projects')?.entries ?? [],
+)
+
+function addProject() {
+  projects.value.push({
+    id: `pet-project-${crypto.randomUUID()}`,
+    title: '',
+    description: '',
+  })
+}
 const jobs = ref((experience.value?.entries ?? [])
   .filter(entry => entry.id === 'it-service' || entry.subtitle || entry.position !== undefined || entry.period !== undefined)
   .map(entry => {
@@ -110,6 +121,32 @@ function snapshot(): Resume {
       entry.period = job.period
     }
   }
+    const projectEntries = projects.value
+    .filter(project =>
+      plainText(project.title ?? '').trim() ||
+      plainText(project.description ?? '').trim(),
+    )
+    .map(project => ({
+      id: project.id,
+      title: project.title ?? '',
+      description: project.description ?? '',
+    }))
+
+  resume.sections = resume.sections.filter(section => section.id !== 'pet-projects')
+
+  if (projectEntries.length) {
+    const experienceIndex = resume.sections.findIndex(section => section.id === 'experience')
+    const educationIndex = resume.sections.findIndex(section => section.id === 'education')
+    const insertAt = experienceIndex >= 0
+      ? experienceIndex + 1
+      : educationIndex >= 0 ? educationIndex : resume.sections.length
+
+    resume.sections.splice(insertAt, 0, {
+      id: 'pet-projects',
+      title: 'Пет-проекты',
+      entries: projectEntries,
+    })
+  }
   return resume
 }
 
@@ -201,6 +238,28 @@ onMounted(() => dialog.value?.showModal())
             <button type="button" @click="removeJob(index)">Удалить место работы</button>
           </fieldset>
           <button type="button" @click="addJob">Добавить место работы</button>
+        </details>
+
+                <details>
+          <summary>Пет-проекты</summary>
+          <fieldset v-for="(project, index) in projects" :key="project.id">
+            <legend>{{ plainText(project.title ?? '') || 'Новый проект' }}</legend>
+            <RichTextField
+              v-model="project.title"
+              label="Название проекта"
+              :disabled="saving"
+            />
+            <RichTextField
+              v-model="project.description"
+              label="Описание проекта"
+              multiline
+              :disabled="saving"
+            />
+            <button type="button" @click="projects.splice(index, 1)">
+              Удалить проект
+            </button>
+          </fieldset>
+          <button type="button" @click="addProject">Добавить проект</button>
         </details>
 
         <details v-if="education.length">
