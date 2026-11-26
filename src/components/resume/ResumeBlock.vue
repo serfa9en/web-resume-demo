@@ -5,8 +5,14 @@ defineProps<{ block: DocumentBlock }>()
 </script>
 
 <template>
-  <div class="resume-block" :class="[`block-${block.kind}`, { 'is-achievement': block.achievement }]"
-    :style="block.depth ? { paddingLeft: `${block.depth * 4 + 4}mm` } : undefined">
+  <div
+    class="resume-block"
+    :class="[`block-${block.kind}`, {
+      'is-achievement': block.achievement,
+      'starts-group': block.startsGroup,
+    }]"
+    :style="block.depth ? { paddingLeft: `${block.depth * 4 + 4}mm` } : undefined"
+  >
     <h2 v-if="block.kind === 'section'" class="rich-text" v-html="textHtml(block.text)"></h2>
     <h3 v-else-if="block.kind === 'entry'" class="rich-text" v-html="textHtml(block.text)"></h3>
     <p v-else>
@@ -19,3 +25,11 @@ defineProps<{ block: DocumentBlock }>()
     </p>
   </div>
 </template>
+
+<style scoped>
+
+.design-single-column .starts-group {
+  padding-top: 2mm;
+}
+
+</style>

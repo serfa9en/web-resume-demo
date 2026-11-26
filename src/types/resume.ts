@@ -67,6 +67,7 @@ export interface DocumentBlock {
   depth?: number
   achievement?: boolean
   keepWithNext?: boolean
+  startsGroup?: boolean
 }
 
 export interface ResumePage {

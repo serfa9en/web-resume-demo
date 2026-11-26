@@ -142,12 +142,6 @@
             }
           ],
           "subtitle": "Программист 1 кат · Май 2022 — август 2026",
-          "fields": [
-            {
-              "label": "Стаж",
-              "value": "4 года 4 месяца"
-            }
-          ],
           "paragraphs": [
             "Фактическая роль: разработка пользовательских интерфейсов для внутренних веб-приложений и интеграция с backend-сервисами.\n\nСтек: Vue.js (vue2, vue 3), Vuex / Pinia, Vue Router, REST API, Composition API, JavaScript, TypeScript, HTML5, CSS3, SCSS/SASS, Git, Docker, Linux — в части деплоя и тестирования приложений."
           ]

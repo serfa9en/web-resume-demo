@@ -176,54 +176,63 @@ export const useResumeStore = defineStore('resume', () => {
     return result
   }))
 
-  const blocks = computed<DocumentBlock[]>(() => {
+    const blocks = computed<DocumentBlock[]>(() => {
     if (design.value === 'two-column') return contentBlocks.value
-    const profile = resume.value.profile
-    const contacts = profile.contacts.filter(contact => plainText(contact.value).trim())
-    const preferences = profile.preferences.filter(field => plainText(field.value).trim())
-    const contactBlocks: DocumentBlock[] = contacts.length ? [
-      { id: 'profile-contacts', kind: 'section', text: 'Контакты', keepWithNext: true },
-      ...contacts.map((contact, index): DocumentBlock => ({
-        id: `profile-contact-${index}`, kind: 'field', label: contact.label, text: contact.value, href: contact.href,
-      })),
-    ] : []
-    const preferenceBlocks: DocumentBlock[] = preferences.length ? [
-      { id: 'profile-preferences', kind: 'section', text: 'Условия работы', keepWithNext: true },
-      ...preferences.map((field, index): DocumentBlock => ({
-        id: `profile-preference-${index}`, kind: 'field', label: field.label, text: field.value, href: field.href,
-      })),
-    ] : []
-    // In a single column the former sidebar becomes ordinary paginated content.
-    // Both designs use the same profile, without copying or losing its fields.
-    const content = [...contentBlocks.value]
-    const educationIndex = content.findIndex(
-      block => block.kind === 'section' && block.id === 'education',
-    )
 
-    if (educationIndex !== -1) {
-      const nextSectionIndex = content.findIndex(
-        (block, index) => index > educationIndex && block.kind === 'section',
-      )
+    const { profile, sections } = resume.value
+    const personalSection = sections.find(section => section.id === 'personal')
+    const personalFields = personalSection?.entries.flatMap(entry => entry.fields ?? []) ?? []
 
-      content.splice(
-        nextSectionIndex === -1 ? content.length : nextSectionIndex,
-        0,
-        ...preferenceBlocks,
-      )
+    function fieldBlocks(
+      prefix: string,
+      labels: string[],
+      fields: Array<{ label: string; value: string; href?: string }>,
+    ): DocumentBlock[] {
+      return labels.flatMap((label, index) => {
+        const field = fields.find(candidate =>
+          plainText(candidate.label).trim() === label && plainText(candidate.value).trim(),
+        )
+        if (!field) return []
+
+        return [{
+          id: `${prefix}-${index}`,
+          kind: 'field',
+          label: field.label,
+          text: field.value,
+          href: field.href,
+        }]
+      })
     }
 
+    const personal = fieldBlocks('single-personal', [
+      'Гражданство', 'Место проживания', 'Образование', 'Дата рождения',
+    ], personalFields)
+    const contacts = fieldBlocks('single-contact', [
+      'Телефон', 'Почта', 'Telegram', 'GitHub',
+    ], profile.contacts)
+    const preferences = fieldBlocks('single-preference', [
+      'Тип занятости', 'Формат работы',
+    ], profile.preferences)
+
+    const introFields: DocumentBlock[] = []
+    for (const group of [personal, contacts, preferences]) {
+      const firstField = group[0]
+      if (!firstField) continue
+      if (introFields.length) firstField.startsGroup = true
+      introFields.push(...group)
+    }
+
+    const remainingBlocks = contentBlocks.value.filter(block =>
+      block.id !== 'personal' &&
+      !personalSection?.entries.some(entry => block.id.startsWith(`${entry.id}-`)),
+    )
+
+    if (!introFields.length) return remainingBlocks
+
     return [
-      ...contactBlocks,
-      ...(educationIndex === -1 ? preferenceBlocks : []),
-      ...(profile.tags.length
-        ? [{
-            id: 'profile-stack',
-            kind: 'field' as const,
-            label: 'Основной стек',
-            text: joinText(profile.tags, ' · '),
-          }]
-        : []),
-      ...content,
+      { id: 'personal', kind: 'section', text: 'Личная информация', keepWithNext: true },
+      ...introFields,
+      ...remainingBlocks,
     ]
   })
 
