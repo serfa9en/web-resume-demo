@@ -24,8 +24,9 @@ const editorError = ref('')
 const savingVersion = ref(false)
 const restoringVersion = ref(false)
 const deletingVersion = ref(false)
+const promotingVersion = ref(false)
 const versionActionError = ref('')
-const resumeActionsBusy = computed(() => switchingResume.value || restoringVersion.value || deletingVersion.value || savingVersion.value)
+const resumeActionsBusy = computed(() => switchingResume.value || restoringVersion.value || deletingVersion.value || promotingVersion.value || savingVersion.value)
 
 function openEditor(create = false) {
   creatingSource.value = create
@@ -82,6 +83,21 @@ async function deleteVersion(version: ResumeVersion) {
     versionActionError.value = cause instanceof Error ? cause.message : 'Не удалось удалить версию.'
   } finally {
     deletingVersion.value = false
+  }
+}
+
+async function promoteVersion(version: ResumeVersion) {
+  if (resumeActionsBusy.value || !historyReady.value) return
+  if (!window.confirm(`Сделать версию «${version.title}» исходным резюме? Прежний исходник сохранится в истории.`)) return
+
+  promotingVersion.value = true
+  versionActionError.value = ''
+  try {
+    await store.promoteVersion(version.id)
+  } catch (cause) {
+    versionActionError.value = cause instanceof Error ? cause.message : 'Не удалось заменить исходное резюме.'
+  } finally {
+    promotingVersion.value = false
   }
 }
 
@@ -188,6 +204,7 @@ onBeforeUnmount(() => { disposed = true; generation++; resizeObserver?.disconnec
         :actions-disabled="!historyReady || resumeActionsBusy"
         @select="selectVersion"
         @delete="deleteVersion"
+        @promote="promoteVersion"
       />
       <main class="document-workspace">
         <div class="viewer-toolbar screen-only" aria-label="Панель просмотра">

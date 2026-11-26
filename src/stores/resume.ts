@@ -3,16 +3,15 @@ import { computed, ref } from 'vue'
 import { defaultSources, MAIN_RESUME_ID } from '../utils/resumeSources'
 import { joinText, plainText } from '../utils/richText'
 import source from '../data/resume.json'
-import type { DocumentBlock, Resume, ResumeDesign, ResumeSource } from '../types/resume'
+import type { DocumentBlock, Resume, ResumeDesign, ResumeSource, ResumeVersion } from '../types/resume'
 
 
 const HISTORY_KEY = 'web-resume-demo:versions:v1'
 
-export interface ResumeVersion {
-  id: string
-  createdAt: string | null
-  title: string
-  resume: Resume
+export type { ResumeVersion } from '../types/resume'
+
+function preferredId(versions: ResumeVersion[]): string {
+  return versions[0]!.previousOriginal ? 'original' : versions[0]!.id
 }
 
 function initialHistory(): ResumeVersion[] {
@@ -30,7 +29,12 @@ async function requestApi<T>(path: string, body?: Record<string, unknown>): Prom
     throw new Error('Сервер резюме недоступен. Запусти приложение через npm run dev или npm run preview.')
   }
   const data = await response.json()
-  if (!response.ok) throw new Error(data.error ?? 'Не удалось получить данные резюме.')
+  if (!response.ok) {
+    const message = typeof data === 'object' && data !== null && 'error' in data && typeof data.error === 'string'
+      ? data.error
+      : 'Не удалось получить данные резюме.'
+    throw new Error(message)
+  }
   return data as T
 }
 
@@ -66,11 +70,11 @@ export const useResumeStore = defineStore('resume', () => {
     history.value.find(version => version.id === selectedId.value) ?? history.value[0]!,
   )
   const resume = computed(() => activeVersion.value.resume)
-  const viewingLatest = computed(() => activeVersion.value.id === history.value[0]!.id)
+  const viewingLatest = computed(() => activeVersion.value.id === preferredId(history.value))
 
   function useLatest(versions: ResumeVersion[]) {
     history.value = versions
-    selectedId.value = versions[0]!.id
+    selectedId.value = preferredId(versions)
   }
 
   async function initializeHistory() {
@@ -123,8 +127,14 @@ export const useResumeStore = defineStore('resume', () => {
     const versions = await requestHistory(resumeId.value, { action: 'delete', id })
     history.value = versions
     if (!versions.some(version => version.id === selectedId.value)) {
-      selectedId.value = versions[0]!.id
+      selectedId.value = preferredId(versions)
     }
+  }
+
+  async function promoteVersion(id: string) {
+    if (!historyReady.value) throw new Error('История ещё не загружена.')
+    history.value = await requestHistory(resumeId.value, { action: 'promote', id })
+    selectedId.value = 'original'
   }
 
   async function restoreVersion() {
@@ -194,5 +204,5 @@ export const useResumeStore = defineStore('resume', () => {
     ]
   })
 
-  return { sources, resumeId, selectResume, createResume, resume, design, blocks, history, historyError, historyReady, initializeHistory, activeVersion, viewingLatest, selectVersion, addVersion, restoreVersion, deleteVersion }
+  return { sources, resumeId, selectResume, createResume, resume, design, blocks, history, historyError, historyReady, initializeHistory, activeVersion, viewingLatest, selectVersion, addVersion, restoreVersion, deleteVersion, promoteVersion }
 })

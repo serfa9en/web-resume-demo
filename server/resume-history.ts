@@ -5,8 +5,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { fileURLToPath } from 'node:url'
 import type { Plugin } from 'vite'
 import { defaultSources, MAIN_RESUME_ID } from '../src/utils/resumeSources'
-import type { Resume, ResumeSource } from '../src/types/resume'
-import type { ResumeVersion } from '../src/stores/resume'
+import type { Resume, ResumeSource, ResumeVersion } from '../src/types/resume'
 
 const mainDirectory = fileURLToPath(new URL('../src/data/versions/', import.meta.url))
 const sourcesDirectory = fileURLToPath(new URL('../src/data/resumes/', import.meta.url))
@@ -72,6 +71,7 @@ function validVersion(value: unknown): value is ResumeVersion {
   const version = value as ResumeVersion | null
   return !!version && typeof version.id === 'string' && typeof version.title === 'string' &&
     (version.createdAt === null || (typeof version.createdAt === 'string' && Number.isFinite(Date.parse(version.createdAt)))) &&
+    (version.previousOriginal === undefined || typeof version.previousOriginal === 'boolean') &&
     validResume(version.resume)
 }
 
@@ -165,8 +165,9 @@ async function saveVersion(directory: string, version: ResumeVersion) {
       await mkdir(destination, { recursive: true })
       try {
         // Publish the complete file without overwriting a version already there.
-        await link(temp, join(destination, filename))
-        return
+        const savedPath = join(destination, filename)
+        await link(temp, savedPath)
+        return savedPath
       } catch (cause) {
         if ((cause as NodeJS.ErrnoException).code !== 'EEXIST') throw cause
       }
@@ -294,8 +295,39 @@ async function deleteVersion(source: SavedSource, id: string) {
   return loadHistory(source)
 }
 
+async function promoteVersion(source: SavedSource, version: ResumeVersion) {
+  if (JSON.stringify(source.resume) === JSON.stringify(version.resume)) return loadHistory(source)
+
+  const builtinPath = builtinFiles[source.id]
+  const sourcePath = builtinPath ?? join(sourcesDirectory, source.id, 'resume.json')
+  const updatedSource = { ...source, resume: version.resume }
+  const backupPath = await saveVersion(versionsDirectory(source.id), {
+    id: randomUUID(),
+    createdAt: new Date().toISOString(),
+    title: 'Предыдущее исходное резюме',
+    resume: source.resume,
+    previousOriginal: true,
+  })
+  try {
+    await replaceJson(sourcePath, builtinPath ? version.resume : updatedSource)
+  } catch (cause) {
+    await rm(backupPath, { force: true }).catch(() => undefined)
+    throw cause
+  }
+  return loadHistory(updatedSource)
+}
+
 async function applyChange(source: SavedSource, body: Record<string, unknown>, history: ResumeVersion[]) {
   const directory = versionsDirectory(source.id)
+  if (body.action === 'promote') {
+    if (typeof body.id !== 'string' || body.id === 'original') {
+      throw new RequestError(400, 'Выбери сохранённую версию.')
+    }
+    const version = history.find(item => item.id === body.id)
+    if (!version) throw new RequestError(404, 'Версия не найдена. Обнови историю.')
+    return promoteVersion(source, version)
+  }
+
   if (body.action === 'delete') {
     if (typeof body.id !== 'string' || !body.id) {
       throw new RequestError(400, 'Не указана версия для удаления.')

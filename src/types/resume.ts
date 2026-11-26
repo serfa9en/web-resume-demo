@@ -72,3 +72,11 @@ export interface DocumentBlock {
 export interface ResumePage {
   blocks: DocumentBlock[]
 }
+
+export interface ResumeVersion {
+  id: string
+  createdAt: string | null
+  previousOriginal?: boolean
+  title: string
+  resume: Resume
+}

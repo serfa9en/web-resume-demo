@@ -205,15 +205,25 @@
 }
 .rich-input-multiline { min-height: 105px; }
 
-.resume-history li > .resume-history-delete {
-  width: auto;
+.resume-history-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
   margin: 1px 0 6px 8px;
+}
+
+.resume-history li .resume-history-actions button {
+  width: auto;
   padding: 3px 5px;
-  color: #8e2133;
+  color: #514062;
   font-size: 12px;
 }
 
-.resume-history li > .resume-history-delete:disabled {
+.resume-history li .resume-history-actions .resume-history-delete {
+  color: #8e2133;
+}
+
+.resume-history-actions button:disabled {
   opacity: 0.55;
   cursor: default;
 }
